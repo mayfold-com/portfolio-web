@@ -1,12 +1,19 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import favicon from '$lib/assets/favicon.svg';
-	import FontPicker from '$lib/components/FontPicker.svelte';
 	import GridToggle from '$lib/components/GridToggle.svelte';
-	import MotionPicker from '$lib/components/MotionPicker.svelte';
 	import Nav from '$lib/components/Nav.svelte';
 	import ProjectSheet from '$lib/components/ProjectSheet.svelte';
 	import ThemePicker from '$lib/components/ThemePicker.svelte';
-	import { fontshareStylesheetHref, fontsStylesheetHref } from '$lib/fonts';
+	import {
+		applyFont,
+		applyFontWeight,
+		defaultFontId,
+		defaultFontWeight,
+		fontshareStylesheetHref,
+		fontsStylesheetHref
+	} from '$lib/fonts';
+	import { defaultMotionPresetId, setMotionPreset } from '$lib/projectMotion';
 	import { preparePageTransition } from '$lib/transitions';
 	import '../app.css';
 	import '$lib/local-fonts.css';
@@ -14,6 +21,13 @@
 	let { children } = $props();
 
 	preparePageTransition();
+
+	$effect(() => {
+		if (!browser) return;
+		applyFont(defaultFontId);
+		applyFontWeight(defaultFontWeight);
+		setMotionPreset(defaultMotionPresetId);
+	});
 </script>
 
 <svelte:head>
@@ -44,8 +58,6 @@
 <ProjectSheet />
 <ThemePicker />
 <GridToggle />
-<FontPicker />
-<MotionPicker />
 
 <style>
 	.shell {

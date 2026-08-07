@@ -5,7 +5,9 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			projectId?: string;
+		}
 		interface Platform {
 			env: Env;
 			cf: CfProperties;

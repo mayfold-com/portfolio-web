@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { poseTransform } from '$lib/magnet';
 	import { MagnetSpring } from '$lib/magnetSpring.svelte';
-	import { rememberVideoTime, resumeVideo } from '$lib/videoPlayback';
+	import { isBorrowed } from '$lib/videoHost';
 	import type { HTMLButtonAttributes } from 'svelte/elements';
 
 	type Props = HTMLButtonAttributes & {
@@ -9,6 +10,10 @@
 		size?: 'tall' | 'mid' | 'short' | 'wide';
 		lifted?: boolean;
 		video?: string;
+		/** Optional WebM source (preferred when supported). */
+		videoWebm?: string;
+		/** Still shown before the video is near the viewport / loaded. */
+		poster?: string;
 		title?: string;
 		description?: string;
 	};
@@ -17,6 +22,8 @@
 		size = 'mid',
 		lifted = false,
 		video,
+		videoWebm,
+		poster,
 		title,
 		description,
 		class: className = '',
@@ -26,8 +33,14 @@
 
 	const spring = new MagnetSpring();
 	let hovering = $state(false);
+	let inView = $state(false);
+	let mediaReady = $state(false);
 	let videoEl: HTMLVideoElement | undefined = $state();
+	let faceEl: HTMLSpanElement | undefined = $state();
 	let shellEl: HTMLSpanElement | undefined = $state();
+
+	const reduceMotion =
+		browser && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 	function onMove(event: MouseEvent) {
 		if (lifted) return;
@@ -40,14 +53,76 @@
 		spring.release();
 	}
 
+	/** Imperative <video> so the sheet can borrow the node without Svelte reclaiming it. */
 	$effect(() => {
-		if (!videoEl || !video) return;
-		if (lifted) {
-			rememberVideoTime(video, videoEl);
-			videoEl.pause();
-			return;
+		if (!browser || !faceEl || !video || reduceMotion) return;
+
+		const el = document.createElement('video');
+		el.className = 'card-video';
+		el.muted = true;
+		el.defaultMuted = true;
+		el.playsInline = true;
+		el.loop = true;
+		el.preload = 'none';
+		el.setAttribute('playsinline', '');
+		el.setAttribute('webkit-playsinline', '');
+		el.setAttribute('muted', '');
+		if (poster) el.setAttribute('poster', poster);
+		faceEl.appendChild(el);
+		videoEl = el;
+
+		return () => {
+			if (!isBorrowed(el)) el.remove();
+			if (videoEl === el) videoEl = undefined;
+		};
+	});
+
+	/** Near-viewport gate — decode only when the card is about to be seen. */
+	$effect(() => {
+		if (!browser || !shellEl || !video || reduceMotion) return;
+		const io = new IntersectionObserver(
+			([entry]) => {
+				inView = Boolean(entry?.isIntersecting);
+			},
+			{ rootMargin: '120px 0px', threshold: 0.05 }
+		);
+		io.observe(shellEl);
+		return () => io.disconnect();
+	});
+
+	$effect(() => {
+		if (!videoEl || !video || reduceMotion) return;
+		if (lifted || isBorrowed(videoEl)) return;
+
+		if (inView) {
+			const existing = videoEl.querySelector('source[type="video/mp4"]') as HTMLSourceElement | null;
+			const needsLoad = !existing || existing.src !== new URL(video, location.href).href;
+			if (needsLoad) {
+				videoEl.replaceChildren();
+				if (videoWebm) {
+					const webm = document.createElement('source');
+					webm.src = videoWebm;
+					webm.type = 'video/webm';
+					videoEl.appendChild(webm);
+				}
+				const mp4 = document.createElement('source');
+				mp4.src = video;
+				mp4.type = 'video/mp4';
+				videoEl.appendChild(mp4);
+				videoEl.preload = 'auto';
+				mediaReady = false;
+				videoEl.load();
+			}
+			const onReady = () => {
+				mediaReady = true;
+			};
+			videoEl.addEventListener('loadeddata', onReady, { once: true });
+			if (videoEl.readyState >= 2) mediaReady = true;
+			void videoEl.play().catch(() => {});
+			return () => videoEl?.removeEventListener('loadeddata', onReady);
 		}
-		resumeVideo(video, videoEl);
+
+		videoEl.pause();
 	});
 
 	$effect(() => {
@@ -65,27 +140,21 @@
 	class:lifted
 	class:hot={hovering}
 	class:has-video={Boolean(video)}
+	class:media-ready={mediaReady}
 	{...rest}
 	onmousemove={onMove}
 	onmouseleave={onLeave}
 	onblur={onLeave}
 >
 	<span class="card-shell" bind:this={shellEl} data-project-origin>
-		<span class="card-magnet" style:transform={poseTransform(spring.pose)}>
-			<span class="card-face" aria-hidden="true">
-				{#if video}
-					<video
-						bind:this={videoEl}
-						class="card-video"
-						src={video}
-						muted
-						loop
-						playsinline
-						autoplay
-						preload="auto"
-					></video>
-				{/if}
-			</span>
+		<span class="card-magnet" class:sprung={hovering} style:transform={poseTransform(spring.pose)}>
+			<span
+				class="card-face"
+				bind:this={faceEl}
+				aria-hidden="true"
+				data-video-home
+				style:background-image={poster ? `url(${poster})` : undefined}
+			></span>
 			{#if children}
 				<span class="card-content">{@render children()}</span>
 			{/if}
@@ -128,6 +197,8 @@
 		width: 100%;
 		height: 18rem;
 		border-radius: 1.75rem;
+		/* Magnet translate/rotate must be allowed to spill past the shell. */
+		overflow: visible;
 	}
 
 	.card.size-tall .card-shell {
@@ -147,43 +218,52 @@
 		aspect-ratio: 16 / 9;
 	}
 
+	/* Transform lives here — keep overflow visible so cursor follow isn't clipped. */
 	.card-magnet {
 		position: absolute;
 		inset: 0;
 		border-radius: inherit;
-		overflow: hidden;
+		overflow: visible;
+	}
+
+	.card-magnet.sprung {
 		will-change: transform;
 	}
 
+	/* Round + clip media only; never the magnet layer. */
 	.card-face {
 		position: absolute;
 		inset: 0;
 		border-radius: inherit;
-		background: color-mix(in srgb, var(--color-text) 9%, var(--color-bg));
+		background-color: color-mix(in srgb, var(--color-text) 9%, var(--color-bg));
+		background-size: cover;
+		background-position: center;
 		overflow: hidden;
-		transition:
-			background-color 160ms ease,
-			box-shadow 160ms ease;
+		transition: background-color 160ms ease;
 	}
 
-	.card-video {
+	.card-face :global(.card-video) {
 		display: block;
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
 		pointer-events: none;
+		opacity: 0;
+		transition: opacity 180ms ease;
+	}
+
+	.card.media-ready .card-face :global(.card-video) {
+		opacity: 1;
 	}
 
 	.card.hot .card-face {
-		background: color-mix(in srgb, var(--color-text) 13%, var(--color-bg));
-		box-shadow: 0 18px 40px rgb(0 0 0 / 0.18);
+		background-color: color-mix(in srgb, var(--color-text) 13%, var(--color-bg));
 	}
 
 	/* Hide only the media shell — title/description stay so the close morph
 	   lands on a complete thumbnail, not an empty card. */
 	.card.lifted .card-shell {
 		opacity: 0;
-		transition: opacity 0s linear 140ms;
 	}
 
 	.card.lifted {
@@ -231,12 +311,6 @@
 		.card.size-wide .card-shell {
 			height: auto;
 			aspect-ratio: 16 / 9;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.card-video {
-			display: none;
 		}
 	}
 </style>

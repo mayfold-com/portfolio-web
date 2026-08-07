@@ -24,8 +24,10 @@
 		{#each workProjects as project (project.id)}
 			<li class="item" class:lifted={activeId === project.id}>
 				<MagneticCard
+					data-project-id={project.id}
 					size="wide"
 					video={project.video}
+					poster={project.poster}
 					title={project.title}
 					description={project.description}
 					lifted={activeId === project.id}
@@ -69,6 +71,11 @@
 		gap: 2.75rem;
 		width: var(--span-4);
 		max-width: 100%;
+	}
+
+	.list,
+	.item {
+		overflow: visible;
 	}
 
 	.item {

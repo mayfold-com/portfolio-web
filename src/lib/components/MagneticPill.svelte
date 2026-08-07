@@ -58,6 +58,10 @@
 		inset: 0;
 		border-radius: inherit;
 		pointer-events: none;
+	}
+
+	.pill:hover .pill-magnet,
+	.pill:focus-visible .pill-magnet {
 		will-change: transform;
 	}
 

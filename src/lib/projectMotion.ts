@@ -18,7 +18,8 @@ export type MotionPreset = {
 
 /** Shared snappy character; only timings change between speeds. */
 const OPEN_EASE = 'cubic-bezier(0.2, 0.9, 0.2, 1)';
-const CLOSE_EASE = 'cubic-bezier(0.45, 0.02, 0.2, 1)';
+/** Soft land into the thumbnail — ease-out, no slow start / late rush. */
+const CLOSE_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
 export const motionPresets: MotionPreset[] = [
 	{

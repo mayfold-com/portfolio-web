@@ -53,8 +53,9 @@
 <style>
 	.trigger {
 		--trigger-size: 3.4rem;
+		/* Sit under the color dropdown (label + select ≈ 4.1rem). */
 		position: fixed;
-		top: calc(1.25rem + var(--trigger-size) + 0.75rem);
+		top: calc(1.25rem + 4.1rem + 0.75rem);
 		right: 1.25rem;
 		z-index: 91;
 		display: grid;
@@ -122,7 +123,7 @@
 	@media (max-width: 600px) {
 		.trigger {
 			--trigger-size: 3rem;
-			top: calc(0.9rem + var(--trigger-size) + 0.65rem);
+			top: calc(0.9rem + 4.1rem + 0.65rem);
 			right: 0.9rem;
 		}
 	}

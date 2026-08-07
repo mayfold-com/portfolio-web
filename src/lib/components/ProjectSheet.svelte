@@ -1,12 +1,8 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
+	import { page } from '$app/state';
+	import { untrack } from 'svelte';
 	import { getWorkProject } from '$lib/data';
-	import {
-		lerpPose,
-		poseTransform,
-		ZERO_POSE,
-		type MagnetPose
-	} from '$lib/magnet';
 	import {
 		activeMotionPresetId,
 		defaultMotionPresetId,
@@ -14,12 +10,21 @@
 		type MotionPreset
 	} from '$lib/projectMotion';
 	import {
-		closeProject,
+		captureProjectOrigin,
+		clearProject,
+		hydrateProjectFromUrl,
+		openProject,
 		openProjectId,
+		projectIdFromPage,
+		projectIdFromUrl,
 		projectOrigin,
+		shouldHydrateProjectFromUrl,
+		syncUrlAfterClose,
+		waitForProjectSource,
 		type ProjectOrigin
 	} from '$lib/projectSheet';
-	import { rememberVideoTime, resumeVideo } from '$lib/videoPlayback';
+	import { borrowVideo, returnVideo } from '$lib/videoHost';
+	import { captureVideoFrame } from '$lib/videoPlayback';
 
 	type Rect = {
 		top: number;
@@ -29,63 +34,68 @@
 		radius: string;
 	};
 
+	/** opening → open ⇄ dismissing → closing */
+	type SheetPhase = 'opening' | 'open' | 'dismissing' | 'closing';
+
 	let id = $state<string | null>(null);
 	let origin = $state<ProjectOrigin | null>(null);
 	let rendered = $state(false);
+	let phase = $state<SheetPhase>('opening');
 	let expanded = $state(false);
-	/** Caption overlay — revealed after the thumbnail morph finishes. */
 	let contentVisible = $state(false);
-	let closing = $state(false);
-	let dismissing = $state(false);
-	let dismissProgress = $state(0);
-	/** 0–1 ring fill toward the snap threshold (completes when dismiss catches). */
-	let ringProgress = $state(0);
+	let videoReady = $state(false);
+	/** True while layout width/height is animating — video often paints black then. */
+	let morphing = $state(false);
 	let motion = $state<MotionPreset>(getMotionPreset(defaultMotionPresetId));
+	let sheetH = $state(0);
 
+	let backdropEl: HTMLDivElement | undefined = $state();
 	let cardEl: HTMLDivElement | undefined = $state();
 	let scrollerEl: HTMLDivElement | undefined = $state();
+	let ringEl: HTMLDivElement | undefined = $state();
+	let heroEl: HTMLDivElement | undefined = $state();
+	let videoMount: HTMLDivElement | undefined = $state();
 	let videoEl: HTMLVideoElement | undefined = $state();
-	let videoReady = $state(false);
+	let coverCanvas: HTMLCanvasElement | undefined = $state();
 
 	let openRect: Rect | null = null;
 	let openFrame = 0;
+	let closeFrame = 0;
+	let coverFrame = 0;
 	let closeTimer: ReturnType<typeof setTimeout> | undefined;
 	let contentTimer: ReturnType<typeof setTimeout> | undefined;
 	let settleTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Bumped on open / new close so a stale finishClose can't undo Forward. */
+	let closeEpoch = 0;
+	/** True when UI dismiss must `history.back()` after the morph (not browser Back). */
+	let pendingHistoryPop = false;
+	/** True once dismiss committed — blocks further overscroll / re-entrant close(). */
+	let closeRequested = false;
 
-	/** Unresisted dismiss distance in px (0 = fully open). */
+	/** 0–1 ring fill (non-reactive — gesture paints without re-rendering). */
+	let ringProgress = 0;
 	let rawPull = 0;
-	/** Rubber-banded pull used for morph / velocity. */
-	let pull = 0;
 	let touchActive = false;
-	let touchStartY = 0;
-	let touchStartPull = 0;
-	/** Recent pull samples for a short velocity window (iOS-style). */
+	let touchLastY = 0;
 	let pullSamples: { t: number; pull: number }[] = [];
-	/** Last measured gesture velocity (kept across the short settle idle). */
 	let gestureVelocity = 0;
 
 	const project = $derived(getWorkProject(id));
 	const overlayHeadline = $derived(project?.overlayHeadline ?? project?.title ?? '');
+	const isDismissing = $derived(phase === 'dismissing');
+	const isClosing = $derived(phase === 'closing');
+	const canDismiss = $derived(phase === 'open' || phase === 'dismissing');
 
 	/**
-	 * Dismiss physics: free tracking → rising resistance into a 20% commit,
-	 * then the close animation owns the rest (full ring).
+	 * Dismiss is overscroll-at-top only (scrollTop === 0).
+	 * Hero scrolls with the page content once you leave the top.
 	 */
-	const PULL_RANGE = 340;
-	const COMMIT_AT = 0.2;
-	/** Morph distance at commit (full ring). */
-	const COMMIT_PULL = PULL_RANGE * COMMIT_AT;
-	/** 1:1 scroll until this pull; resistance ramps from here to commit. */
-	const RESIST_START = COMMIT_PULL * 0.55;
-	/** Extra input needed after RESIST_START to finish the ring (higher = heavier). */
-	const RESIST_SPAN = COMMIT_PULL * 1.25;
-	/** px/ms — ~700–1000 pts/s territory used by native sheets. */
+	const PULL_RANGE = 280;
 	const FLICK_VELOCITY = 0.7;
 	const DEAD_ZONE = 8;
 	const VELOCITY_WINDOW_MS = 100;
 	const COAST_MS = 180;
-	const WHEEL_SETTLE_MS = 200;
+	const SCROLL_SETTLE_MS = 120;
 
 	const reduceMotion =
 		typeof window !== 'undefined' &&
@@ -100,88 +110,102 @@
 		return width;
 	}
 
+	function radiusPx(value: string) {
+		const first = value.trim().split(/\s+/)[0] || '1.75rem';
+		if (first.endsWith('px')) return parseFloat(first) || 0;
+		try {
+			return cssLength(first);
+		} catch {
+			return cssLength('1.75rem');
+		}
+	}
+
+	function withPxRadius(rect: Rect): Rect {
+		return { ...rect, radius: `${radiusPx(rect.radius)}px` };
+	}
+
 	function finalRect(): Rect {
-		const padY = Math.max(12, Math.min(20, window.innerHeight * 0.02));
-		return {
-			top: padY,
+		const padTop = 40;
+		const padBottom = 20;
+		return withPxRadius({
+			top: padTop,
 			left: cssLength('calc(var(--grid-offset) + var(--grid-pad))'),
 			width: cssLength('var(--span-8)'),
-			height: window.innerHeight - padY * 2,
+			height: window.innerHeight - padTop - padBottom,
 			radius: '1.75rem'
-		};
+		});
 	}
 
 	function thumbRect(): Rect {
-		if (origin) {
-			return {
-				top: origin.top,
-				left: origin.left,
-				width: origin.width,
-				height: origin.height,
-				radius: origin.radius
-			};
+		// Prefer a live measurement so Back/Forward land on the real card.
+		const live = id ? captureProjectOrigin(id) : null;
+		const thumb = live ?? origin;
+		if (thumb) {
+			return withPxRadius({
+				top: thumb.top,
+				left: thumb.left,
+				width: thumb.width,
+				height: thumb.height,
+				radius: thumb.radius
+			});
 		}
 		const open = openRect ?? finalRect();
-		return {
+		return withPxRadius({
 			top: open.top + 40,
 			left: open.left + open.width * 0.05,
 			width: open.width * 0.9,
 			height: open.height * 0.9,
 			radius: open.radius
-		};
-	}
-
-	function stagePose(pose: MagnetPose | undefined): MagnetPose {
-		const p = pose ?? ZERO_POSE;
-		if (p.x === 0 && p.y === 0 && p.r === 0) {
-			const open = openRect ?? finalRect();
-			const thumb = thumbRect();
-			const dx = thumb.left + thumb.width / 2 - (open.left + open.width / 2);
-			const dy = thumb.top + thumb.height / 2 - (open.top + open.height / 2);
-			return {
-				x: Math.max(-3, Math.min(3, dx * 0.018)),
-				y: Math.max(-3, Math.min(3, dy * 0.018)),
-				r: Math.max(-2, Math.min(2, dx * 0.01 + dy * 0.004))
-			};
-		}
-		return { x: p.x * 1.35, y: p.y * 1.35, r: p.r * 1.25 };
-	}
-
-	function lerp(a: number, b: number, t: number) {
-		return a + (b - a) * t;
+		});
 	}
 
 	function clamp01(t: number) {
 		return Math.min(1, Math.max(0, t));
 	}
 
-	/**
-	 * Map raw scroll/drag input → morph pull.
-	 * Free at first, then increasingly heavy until the 20% commit point.
-	 */
-	function mapInputToPull(input: number) {
-		const value = Math.max(0, input);
-		if (value <= RESIST_START) return value;
-		const overshoot = value - RESIST_START;
-		const room = COMMIT_PULL - RESIST_START;
-		if (overshoot >= RESIST_SPAN) return COMMIT_PULL;
-		const u = overshoot / RESIST_SPAN;
-		// Ease-out — noticeable slowdown into the commit, without a hard wall.
-		const eased = 1 - Math.pow(1 - u, 2.1);
-		return RESIST_START + room * eased;
+	/** Two-state layout chrome — no scale(). */
+	function applyChrome(
+		el: HTMLElement,
+		rect: Rect,
+		animate: boolean,
+		opts?: { duration?: number; ease?: string }
+	) {
+		const duration = opts?.duration ?? motion.openDuration;
+		const ease = opts?.ease ?? motion.openEase;
+		const r = withPxRadius(rect);
+		el.style.willChange = animate ? 'top, left, width, height, border-radius' : 'auto';
+		el.style.transition = animate
+			? [
+					`top ${duration}ms ${ease}`,
+					`left ${duration}ms ${ease}`,
+					`width ${duration}ms ${ease}`,
+					`height ${duration}ms ${ease}`,
+					`border-radius ${duration}ms ${ease}`
+				].join(', ')
+			: 'none';
+		el.style.top = `${r.top}px`;
+		el.style.left = `${r.left}px`;
+		el.style.width = `${r.width}px`;
+		el.style.height = `${r.height}px`;
+		el.style.borderRadius = r.radius;
+		el.style.transform = 'none';
 	}
 
-	/** Linear morph progress from applied (resisted) pull. */
-	function progressFromPull(applied: number) {
-		return clamp01(applied / PULL_RANGE);
+	function paintRing(progress: number) {
+		ringProgress = clamp01(progress);
+		backdropEl?.style.setProperty('--dismiss-progress', String(ringProgress * 0.35));
+		backdropEl?.style.setProperty('--ring-progress', String(ringProgress));
+		cardEl?.style.setProperty('--ring-progress', String(ringProgress));
+		ringEl?.classList.toggle('active', ringProgress > 0.001 && canDismiss);
 	}
 
-	function ringFromProgress(progress: number) {
-		return clamp01(progress / COMMIT_AT);
+	function atScrollTop() {
+		return !scrollerEl || scrollerEl.scrollTop <= 0.5;
 	}
 
-	function atCommit(applied = pull) {
-		return applied >= COMMIT_PULL - 0.5;
+	function clearPullSamples() {
+		pullSamples = [];
+		gestureVelocity = 0;
 	}
 
 	function notePullSample(value: number) {
@@ -196,326 +220,356 @@
 		}
 	}
 
-	function clearPullSamples() {
-		pullSamples = [];
-		gestureVelocity = 0;
+	function scheduleSettle() {
+		if (touchActive) return;
+		clearTimeout(settleTimer);
+		settleTimer = setTimeout(() => settleDismiss(), SCROLL_SETTLE_MS);
 	}
 
-	function mixRect(from: Rect, to: Rect, t: number): Rect {
-		const p = clamp01(t);
-		return {
-			top: lerp(from.top, to.top, p),
-			left: lerp(from.left, to.left, p),
-			width: lerp(from.width, to.width, p),
-			height: lerp(from.height, to.height, p),
-			radius: p < 0.55 ? from.radius : to.radius
+	/** Adopt the card's live <video> — one decoder, no seek/reset. */
+	function attachHeroVideo() {
+		if (!videoMount || !origin?.video) return;
+		videoEl = borrowVideo(origin.video, videoMount);
+		videoReady = true;
+		void videoEl.play().catch(() => {});
+	}
+
+	/**
+	 * Layout width/height transitions blank <video> in Chromium/WebKit.
+	 * Paint the live decoder onto a canvas cover for the duration of the morph only.
+	 */
+	function startCoverPaint() {
+		stopCoverPaint();
+		const tick = () => {
+			if (!morphing) {
+				stopCoverPaint();
+				return;
+			}
+			const canvas = coverCanvas;
+			const video = videoEl;
+			if (canvas && video && video.readyState >= 2 && video.videoWidth > 0) {
+				if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+					canvas.width = video.videoWidth;
+					canvas.height = video.videoHeight;
+				}
+				const ctx = canvas.getContext('2d', { alpha: false });
+				if (ctx) {
+					try {
+						ctx.drawImage(video, 0, 0);
+					} catch {
+						/* ignore */
+					}
+				}
+			}
+			coverFrame = requestAnimationFrame(tick);
 		};
+		coverFrame = requestAnimationFrame(tick);
 	}
 
-	function applyChrome(
-		el: HTMLElement,
-		rect: Rect,
-		pose: MagnetPose,
-		animate: boolean,
-		opts?: { duration?: number; ease?: string }
-	) {
-		const duration = opts?.duration ?? motion.openDuration;
-		const ease = opts?.ease ?? motion.openEase;
-		el.style.transition = animate
-			? [
-					`top ${duration}ms ${ease}`,
-					`left ${duration}ms ${ease}`,
-					`width ${duration}ms ${ease}`,
-					`height ${duration}ms ${ease}`,
-					`border-radius ${duration}ms ${ease}`,
-					`transform ${duration}ms ${ease}`
-				].join(', ')
-			: 'none';
-		el.style.top = `${rect.top}px`;
-		el.style.left = `${rect.left}px`;
-		el.style.width = `${rect.width}px`;
-		el.style.height = `${rect.height}px`;
-		el.style.borderRadius = rect.radius;
-		el.style.transform = poseTransform(pose);
+	function stopCoverPaint() {
+		cancelAnimationFrame(coverFrame);
+		coverFrame = 0;
 	}
 
-	function playHero() {
-		if (!videoEl || !project?.video) return;
-		resumeVideo(project.video, videoEl, () => {
-			videoReady = true;
-		});
+	/** Poster underlay for the morph (video may blank while width/height animate). */
+	function prepareHero() {
+		if (!heroEl) return;
+		if (origin?.poster) heroEl.style.backgroundImage = `url(${origin.poster})`;
+		const frame = captureVideoFrame(videoEl);
+		if (frame) heroEl.style.backgroundImage = `url(${frame})`;
 	}
 
-	function syncHero() {
-		if (!videoEl || !project?.video) return;
-		rememberVideoTime(project.video, videoEl);
-	}
-
-	function atScrollerTop() {
-		return !scrollerEl || scrollerEl.scrollTop <= 0;
+	function clearDismiss() {
+		rawPull = 0;
+		clearPullSamples();
+		paintRing(0);
+		if (phase === 'dismissing') phase = 'open';
 	}
 
 	function paintDismiss(nextRaw: number) {
-		if (!cardEl || !openRect || closing) return;
-		rawPull = Math.max(0, nextRaw);
-		pull = mapInputToPull(rawPull);
-		notePullSample(pull);
-		const progress = progressFromPull(pull);
-		dismissProgress = progress;
-		ringProgress = ringFromProgress(progress);
-		dismissing = pull > DEAD_ZONE;
-		if (pull > DEAD_ZONE) {
-			contentVisible = false;
-			if (scrollerEl) scrollerEl.scrollTop = 0;
+		if (!canDismiss || reduceMotion || closeRequested || phase === 'closing') return;
+		// Cap at 100% — extra overscroll must not keep accumulating past full.
+		rawPull = Math.min(PULL_RANGE, Math.max(0, nextRaw));
+		notePullSample(rawPull);
+		const progress = clamp01(rawPull / PULL_RANGE);
+		if (rawPull > DEAD_ZONE && phase === 'open') phase = 'dismissing';
+		// Ring only — hero is outside the scroller, so it cannot move.
+		paintRing(progress);
+
+		if (rawPull >= PULL_RANGE) {
+			// Via close() so scroll-to-dismiss also pops `?project=` history.
+			close();
 		}
-
-		const angle = stagePose(origin?.pose);
-		// Tilt eases in slightly behind the rect so the morph stays readable.
-		const poseProgress = clamp01(progress * progress);
-		applyChrome(
-			cardEl,
-			mixRect(openRect, thumbRect(), progress),
-			lerpPose(ZERO_POSE, angle, poseProgress),
-			false
-		);
-	}
-
-	/** Full ring reached — freeze scroll morph and let the close animation finish. */
-	function commitClose() {
-		if (closing) return;
-		clearTimeout(settleTimer);
-		touchActive = false;
-		rawPull = RESIST_START + RESIST_SPAN;
-		pull = COMMIT_PULL;
-		dismissProgress = COMMIT_AT;
-		ringProgress = 1;
-		dismissing = true;
-		if (cardEl && openRect) {
-			const angle = stagePose(origin?.pose);
-			applyChrome(
-				cardEl,
-				mixRect(openRect, thumbRect(), COMMIT_AT),
-				lerpPose(ZERO_POSE, angle, COMMIT_AT * COMMIT_AT),
-				false
-			);
-		}
-		snapClose(COMMIT_AT);
-	}
-
-	function springOpen() {
-		if (!cardEl || !openRect || closing) return;
-		rawPull = 0;
-		pull = 0;
-		dismissProgress = 0;
-		ringProgress = 0;
-		dismissing = false;
-		clearPullSamples();
-		applyChrome(cardEl, openRect, ZERO_POSE, true, {
-			duration: Math.min(280, motion.openDuration),
-			ease: 'cubic-bezier(0.2, 0.8, 0.2, 1)'
-		});
-		clearTimeout(contentTimer);
-		contentTimer = setTimeout(() => {
-			if (!closing) contentVisible = true;
-		}, Math.min(280, motion.openDuration));
-	}
-
-	function snapClose(fromProgress = dismissProgress) {
-		if (closing) return;
-		closing = true;
-		cancelAnimationFrame(openFrame);
-		clearTimeout(settleTimer);
-		clearTimeout(contentTimer);
-		contentVisible = false;
-		syncHero();
-		playHero();
-
-		if (!cardEl) {
-			finishClose();
-			return;
-		}
-
-		if (reduceMotion) {
-			expanded = false;
-			finishClose();
-			return;
-		}
-
-		const thumb = thumbRect();
-		const angle = stagePose(origin?.pose);
-		if (!openRect) {
-			applyChrome(cardEl, thumb, angle, false);
-		} else {
-			applyChrome(
-				cardEl,
-				mixRect(openRect, thumb, fromProgress),
-				lerpPose(ZERO_POSE, angle, fromProgress),
-				false
-			);
-		}
-
-		expanded = false;
-		dismissing = false;
-		ringProgress = 1;
-		rawPull = 0;
-		pull = 0;
-		clearPullSamples();
-
-		requestAnimationFrame(() => {
-			if (!cardEl) {
-				finishClose();
-				return;
-			}
-			const start = clamp01(Math.min(fromProgress, COMMIT_AT));
-			// From a full ring, play the remaining half at the normal close pace.
-			const duration = Math.round(motion.closeDuration * Math.max(0.35, 1 - start));
-			applyChrome(cardEl, thumb, angle, true, {
-				duration,
-				ease: motion.closeEase
-			});
-			clearTimeout(closeTimer);
-			closeTimer = setTimeout(finishClose, duration);
-		});
 	}
 
 	function settleDismiss(velocity = gestureVelocity) {
-		if (closing) return;
-		const progress = progressFromPull(pull);
-		// Inertia projection decides commit vs cancel — animation always starts from here.
-		const projected = progress + (velocity * COAST_MS) / PULL_RANGE;
+		if (!canDismiss || closeRequested || phase === 'closing') return;
+		const projected = ringProgress + (velocity * COAST_MS) / PULL_RANGE;
 		const shouldSnap =
-			atCommit() ||
-			projected >= COMMIT_AT ||
-			(progress > 0.1 && velocity >= FLICK_VELOCITY);
+			ringProgress >= 1 || projected >= 1 || (ringProgress > 0.35 && velocity >= FLICK_VELOCITY);
 
 		clearPullSamples();
 		if (shouldSnap) {
-			if (atCommit()) {
-				commitClose();
-				return;
-			}
-			snapClose(progress);
+			close();
 			return;
 		}
-		springOpen();
+		clearDismiss();
 	}
 
+	/** Trackpad / wheel: past-top overscroll drives the ring; content scroll is untouched. */
 	function onWheel(event: WheelEvent) {
-		if (!expanded || !cardEl || !openRect || closing || reduceMotion || touchActive) return;
+		if (!canDismiss || reduceMotion || closeRequested || phase === 'closing') return;
 
-		// Scroll the project body normally; dismiss only from the hero top.
-		if (contentVisible && pull <= DEAD_ZONE) {
-			if (event.deltaY >= 0) return;
-			if (!atScrollerTop()) return;
-		} else if (pull <= DEAD_ZONE && event.deltaY >= 0) {
+		// Past the top → fill ring (deltaY < 0).
+		if (atScrollTop() && event.deltaY < 0) {
+			event.preventDefault();
+			if (rawPull >= PULL_RANGE) {
+				close();
+				return;
+			}
+			paintDismiss(rawPull + -event.deltaY);
+			scheduleSettle();
 			return;
 		}
 
-		event.preventDefault();
-		// Pixel trackpads are denser; line/page wheels need a touch more gain.
-		const gain = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 1 : 1.2;
-		paintDismiss(rawPull - event.deltaY * gain);
-
-		clearTimeout(settleTimer);
-
-		// Full ring — stop scroll morph; closing animation takes over.
-		if (atCommit()) {
-			commitClose();
-			return;
+		// While armed, scroll-down releases the ring before content moves.
+		if (rawPull > 0 && event.deltaY > 0) {
+			event.preventDefault();
+			const next = rawPull - event.deltaY;
+			if (next <= DEAD_ZONE) clearDismiss();
+			else paintDismiss(next);
+			scheduleSettle();
 		}
-
-		// Below commit — wait for release, then snap or spring back.
-		settleTimer = setTimeout(() => settleDismiss(), WHEEL_SETTLE_MS);
 	}
 
 	function onTouchStart(event: TouchEvent) {
-		if (!expanded || closing || reduceMotion) return;
-		const touch = event.touches[0];
-		if (!touch) return;
+		if (!canDismiss || closeRequested) return;
 		touchActive = true;
-		touchStartY = touch.clientY;
-		touchStartPull = rawPull;
-		clearPullSamples();
-		notePullSample(pull);
+		touchLastY = event.touches[0]?.clientY ?? 0;
 		clearTimeout(settleTimer);
+		if (videoEl) void videoEl.play().catch(() => {});
 	}
 
 	function onTouchMove(event: TouchEvent) {
-		if (!touchActive || !expanded || !openRect || closing || reduceMotion) return;
-		const touch = event.touches[0];
-		if (!touch) return;
+		if (!touchActive || !canDismiss || reduceMotion || closeRequested) return;
+		const y = event.touches[0]?.clientY ?? touchLastY;
+		const dy = y - touchLastY; // >0 finger down → pull to dismiss at top
+		touchLastY = y;
 
-		const drag = touch.clientY - touchStartY;
-		if (drag <= 0 && pull <= DEAD_ZONE) return;
-		if (contentVisible && pull <= DEAD_ZONE && !atScrollerTop()) return;
+		if (atScrollTop() && dy > 0) {
+			if (event.cancelable) event.preventDefault();
+			if (rawPull >= PULL_RANGE) {
+				close();
+				return;
+			}
+			paintDismiss(rawPull + dy);
+			return;
+		}
 
-		event.preventDefault();
-		paintDismiss(touchStartPull + drag);
-
-		if (atCommit()) {
-			commitClose();
+		if (rawPull > 0) {
+			if (event.cancelable) event.preventDefault();
+			if (dy < 0) {
+				const next = rawPull + dy;
+				if (next <= DEAD_ZONE) clearDismiss();
+				else paintDismiss(next);
+			}
 		}
 	}
 
 	function onTouchEnd() {
 		if (!touchActive) return;
 		touchActive = false;
-		if (pull > DEAD_ZONE) settleDismiss();
-		else if (pull > 0) springOpen();
+		if (!canDismiss || reduceMotion || closeRequested) return;
+		if (rawPull > DEAD_ZONE) settleDismiss();
+		else if (rawPull > 0) clearDismiss();
+	}
+
+	/**
+	 * Close = exact reverse of open: same two layout states, same stage geometry
+	 * (--sheet-h), same canvas cover. Only difference is direction (open→thumb).
+	 */
+	function beginClose(epoch = closeEpoch) {
+		if (phase === 'closing') return;
+
+		cancelAnimationFrame(openFrame);
+		cancelAnimationFrame(closeFrame);
+		clearTimeout(settleTimer);
+		clearTimeout(contentTimer);
+		touchActive = false;
+		contentVisible = false;
+		rawPull = 0;
+		clearPullSamples();
+		paintRing(0);
+
+		if (!cardEl) {
+			finishClose(epoch);
+			return;
+		}
+
+		if (reduceMotion) {
+			phase = 'closing';
+			expanded = false;
+			finishClose(epoch);
+			return;
+		}
+
+		const from = openRect ?? finalRect();
+		const thumb = thumbRect();
+		const duration = motion.closeDuration;
+
+		phase = 'closing';
+		morphing = true;
+		if (scrollerEl) scrollerEl.scrollTop = 0;
+		prepareHero();
+		startCoverPaint();
+		applyChrome(cardEl, from, false);
+
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (epoch !== closeEpoch) return;
+				if (!cardEl) {
+					finishClose(epoch);
+					return;
+				}
+				applyChrome(cardEl, thumb, true, {
+					duration,
+					ease: motion.closeEase
+				});
+
+				const started = performance.now();
+				const keepAlive = () => {
+					if (epoch !== closeEpoch || phase !== 'closing') return;
+					if (videoEl && videoEl.paused) void videoEl.play().catch(() => {});
+					if (performance.now() - started < duration) {
+						closeFrame = requestAnimationFrame(keepAlive);
+					}
+				};
+				closeFrame = requestAnimationFrame(keepAlive);
+
+				clearTimeout(closeTimer);
+				closeTimer = setTimeout(() => finishClose(epoch), duration);
+			});
+		});
 	}
 
 	function close() {
-		if (closing) return;
+		if (phase === 'closing' || closeRequested) return;
+		closeRequested = true;
+		rawPull = Math.min(rawPull, PULL_RANGE);
 
-		if (contentVisible && pull <= 0) {
-			closing = true;
-			clearTimeout(contentTimer);
+		const epoch = ++closeEpoch;
+		// Pop / strip `?project=` for UI + scroll dismiss — browser Back already cleared state.
+		pendingHistoryPop =
+			Boolean(page.state.projectId) ||
+			Boolean(projectIdFromUrl(page.url)) ||
+			Boolean(projectIdFromUrl(new URL(location.href)));
+
+		touchActive = false;
+		clearPullSamples();
+		clearTimeout(settleTimer);
+
+		// Back during the open morph — tear down without waiting for settle.
+		if (phase === 'opening') {
+			beginClose(epoch);
+			return;
+		}
+
+		// Reverse of open's post-morph content reveal: hide details, then morph.
+		if (contentVisible) {
 			contentVisible = false;
-			if (scrollerEl) scrollerEl.scrollTop = 0;
-			syncHero();
+			paintRing(0);
+			rawPull = 0;
 			clearTimeout(closeTimer);
 			closeTimer = setTimeout(() => {
-				closing = false;
-				snapClose(0);
+				if (epoch !== closeEpoch) return;
+				beginClose(epoch);
 			}, motion.closeContentMs);
 			return;
 		}
 
-		snapClose(progressFromPull(pull));
+		beginClose(epoch);
 	}
 
-	function finishClose() {
+	function finishClose(epoch = closeEpoch) {
+		if (epoch !== closeEpoch) return;
+
+		cancelAnimationFrame(closeFrame);
+		stopCoverPaint();
+		// Return the borrowed video to the card BEFORE unlifting / unmounting.
+		returnVideo();
+		videoEl = undefined;
 		rendered = false;
 		expanded = false;
 		contentVisible = false;
-		closing = false;
-		dismissing = false;
-		dismissProgress = 0;
-		ringProgress = 0;
+		morphing = false;
+		phase = 'opening';
 		rawPull = 0;
-		pull = 0;
+		ringProgress = 0;
 		clearPullSamples();
 		openRect = null;
+		sheetH = 0;
 		videoReady = false;
+		touchActive = false;
 		id = null;
 		origin = null;
-		closeProject();
+		closeRequested = false;
+		const shouldPop = pendingHistoryPop;
+		pendingHistoryPop = false;
+		// Clear store first so URL sync (Back) does not re-trigger close().
+		clearProject();
+		if (shouldPop) syncUrlAfterClose();
 	}
 
 	function onBackdropClick(event: MouseEvent) {
-		if (event.target === event.currentTarget && !closing) close();
+		if (event.target === event.currentTarget && canDismiss) close();
 	}
 
 	function onKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape' && rendered && !closing) close();
+		if (event.key === 'Escape' && rendered && canDismiss) close();
 	}
 
 	function onResize() {
-		if (!expanded || !cardEl || closing) return;
+		if (!canDismiss || !cardEl || !expanded) return;
 		openRect = finalRect();
-		if (pull > 0) paintDismiss(pull);
-		else applyChrome(cardEl, openRect, ZERO_POSE, false);
+		sheetH = openRect.height;
+		applyChrome(cardEl, openRect, false);
 	}
+
+	// Shallow history: SvelteKit stores the case in `page.state` (Back/Forward).
+	// `?project=` is for the address bar / refresh; cold load waits for the card thumb
+	// so open morphs from it (same path as click / Forward) instead of the inset fallback.
+	$effect(() => {
+		if (!browser) return;
+
+		const stateId = page.state.projectId ?? null;
+		const urlId = projectIdFromUrl(page.url) ?? projectIdFromUrl(new URL(location.href));
+		const targetId = projectIdFromPage(page);
+
+		// Shared / refreshed link: paint the page first, then hydrate once the thumb
+		// exists so the open path below can morph from it (not the inset fallback).
+		if (!stateId && urlId && getWorkProject(urlId) && shouldHydrateProjectFromUrl(urlId)) {
+			const controller = new AbortController();
+			void waitForProjectSource(urlId, { signal: controller.signal }).then(() => {
+				if (controller.signal.aborted) return;
+				hydrateProjectFromUrl(urlId);
+			});
+			return () => controller.abort();
+		}
+
+		untrack(() => {
+			if (targetId && getWorkProject(targetId)) {
+				if (targetId !== id) {
+					openProject(targetId, undefined, undefined, { syncUrl: false });
+				}
+				return;
+			}
+
+			// Browser Back cleared shallow state while the sheet is up.
+			if ((rendered || id) && phase !== 'closing') {
+				close();
+			}
+		});
+	});
 
 	$effect(() => {
 		const unsubMotion = activeMotionPresetId.subscribe((value) => {
@@ -526,16 +580,20 @@
 			clearTimeout(contentTimer);
 			clearTimeout(settleTimer);
 			cancelAnimationFrame(openFrame);
+			cancelAnimationFrame(closeFrame);
 
 			if (value) {
-				closing = false;
-				dismissing = false;
-				dismissProgress = 0;
+				// Invalidate any in-flight close so Forward isn't undone by finishClose.
+				closeEpoch += 1;
+				pendingHistoryPop = false;
+				closeRequested = false;
+				phase = 'opening';
+				morphing = true;
 				ringProgress = 0;
 				rawPull = 0;
-				pull = 0;
 				clearPullSamples();
 				openRect = null;
+				sheetH = 0;
 				videoReady = false;
 				contentVisible = false;
 				id = value;
@@ -554,101 +612,133 @@
 			clearTimeout(contentTimer);
 			clearTimeout(settleTimer);
 			cancelAnimationFrame(openFrame);
+			cancelAnimationFrame(closeFrame);
+			stopCoverPaint();
 		};
 	});
 
 	$effect(() => {
 		if (!browser || !rendered || !cardEl || !project) return;
 
+		// Re-measure the live thumb before locking scroll — Forward/shared links
+		// need the same FLIP origin as a click, and scrollbar removal shifts layout.
+		// untrack: don't re-run this morph when we write origin back into the store.
+		const fromSource = untrack(() => {
+			const live = captureProjectOrigin(project.id, null, {
+				scrollIntoView: !origin
+			});
+			if (live) {
+				origin = live;
+				projectOrigin.set(live);
+				return live;
+			}
+			return origin;
+		});
+
 		document.body.style.overflow = 'hidden';
-		playHero();
+		phase = 'opening';
+		morphing = true;
 		rawPull = 0;
-		pull = 0;
-		dismissProgress = 0;
 		ringProgress = 0;
-		dismissing = false;
 		clearPullSamples();
 		contentVisible = false;
 
 		const target = finalRect();
 		openRect = target;
-		const from: Rect = origin
-			? {
-					top: origin.top,
-					left: origin.left,
-					width: origin.width,
-					height: origin.height,
-					radius: origin.radius
-				}
-			: {
+		sheetH = target.height;
+		const from: Rect = fromSource
+			? withPxRadius({
+					top: fromSource.top,
+					left: fromSource.left,
+					width: fromSource.width,
+					height: fromSource.height,
+					radius: fromSource.radius
+				})
+			: withPxRadius({
 					top: target.top + 24,
 					left: target.left + 24,
 					width: target.width - 48,
 					height: target.height - 48,
 					radius: '1.75rem'
-				};
-		const fromPose = stagePose(origin?.pose);
+				});
 
 		const revealContent = () => {
-			if (closing) return;
+			if (phase !== 'open') return;
 			contentVisible = true;
+			if (scrollerEl) scrollerEl.scrollTop = 0;
+			if (videoEl) void videoEl.play().catch(() => {});
 		};
 
 		if (reduceMotion) {
-			applyChrome(cardEl, target, ZERO_POSE, false);
+			applyChrome(cardEl, target, false);
 			expanded = true;
+			phase = 'open';
+			morphing = false;
+			stopCoverPaint();
 			revealContent();
 		} else {
-			applyChrome(cardEl, from, fromPose, false);
+			applyChrome(cardEl, from, false);
 			openFrame = requestAnimationFrame(() => {
 				openFrame = requestAnimationFrame(() => {
-					if (!cardEl || closing) return;
-					applyChrome(cardEl, target, ZERO_POSE, true);
+					if (!cardEl || phase === 'closing') return;
+					applyChrome(cardEl, target, true);
 					expanded = true;
+					phase = 'open';
+					if (scrollerEl) scrollerEl.scrollTop = 0;
+					if (videoEl) void videoEl.play().catch(() => {});
 					clearTimeout(contentTimer);
-					contentTimer = setTimeout(revealContent, motion.openDuration);
+					contentTimer = setTimeout(() => {
+						morphing = false;
+						stopCoverPaint();
+						revealContent();
+					}, motion.openDuration);
 				});
 			});
 		}
 
 		return () => {
 			document.body.style.overflow = '';
+			stopCoverPaint();
 		};
 	});
 
+	/** Borrow after the mount node exists (same tick as open morph). */
 	$effect(() => {
-		if (rendered && project?.video) playHero();
+		if (!browser || !rendered || !videoMount || !origin?.video) return;
+		attachHeroVideo();
+		prepareHero();
+		if (morphing) startCoverPaint();
 	});
 
+	/** Always return the borrowed decoder when the sheet unmounts. */
 	$effect(() => {
-		if (!browser || !videoEl || !project?.video || !rendered) return;
-		const el = videoEl;
-		const src = project.video;
-		const onTime = () => rememberVideoTime(src, el);
-		el.addEventListener('timeupdate', onTime);
+		if (!rendered) return;
 		return () => {
-			rememberVideoTime(src, el);
-			el.removeEventListener('timeupdate', onTime);
+			returnVideo();
+			videoEl = undefined;
 		};
 	});
 
 	$effect(() => {
-		if (!browser || !expanded || closing) return;
+		if (!browser || !expanded || !canDismiss || !scrollerEl || reduceMotion) return;
+
+		const scroller = scrollerEl;
+		const passive: AddEventListenerOptions = { passive: true };
 		const wheelOpts: AddEventListenerOptions = { passive: false };
-		const touchOpts: AddEventListenerOptions = { passive: false };
+		const touchMoveOpts: AddEventListenerOptions = { passive: false };
 
-		window.addEventListener('wheel', onWheel, wheelOpts);
-		window.addEventListener('touchstart', onTouchStart, { passive: true });
-		window.addEventListener('touchmove', onTouchMove, touchOpts);
-		window.addEventListener('touchend', onTouchEnd);
-		window.addEventListener('touchcancel', onTouchEnd);
+		scroller.addEventListener('wheel', onWheel, wheelOpts);
+		scroller.addEventListener('touchstart', onTouchStart, passive);
+		scroller.addEventListener('touchmove', onTouchMove, touchMoveOpts);
+		scroller.addEventListener('touchend', onTouchEnd, passive);
+		scroller.addEventListener('touchcancel', onTouchEnd, passive);
 
 		return () => {
-			window.removeEventListener('wheel', onWheel, wheelOpts);
-			window.removeEventListener('touchstart', onTouchStart);
-			window.removeEventListener('touchmove', onTouchMove, touchOpts);
-			window.removeEventListener('touchend', onTouchEnd);
-			window.removeEventListener('touchcancel', onTouchEnd);
+			scroller.removeEventListener('wheel', onWheel, wheelOpts);
+			scroller.removeEventListener('touchstart', onTouchStart, passive);
+			scroller.removeEventListener('touchmove', onTouchMove, touchMoveOpts);
+			scroller.removeEventListener('touchend', onTouchEnd, passive);
+			scroller.removeEventListener('touchcancel', onTouchEnd, passive);
 		};
 	});
 </script>
@@ -657,13 +747,13 @@
 
 {#if rendered && project}
 	<div
+		bind:this={backdropEl}
 		class="backdrop"
 		class:expanded
 		role="presentation"
 		style:--motion-backdrop="{expanded ? motion.backdropMs : motion.closeBackdropMs}ms"
 		style:--motion-content="{contentVisible ? motion.contentMs : motion.closeContentMs}ms"
 		style:--motion-ease={expanded ? motion.openEase : motion.closeEase}
-		style:--dismiss-progress={dismissProgress}
 		onclick={onBackdropClick}
 	>
 		<div
@@ -671,55 +761,43 @@
 			class="card"
 			class:expanded
 			class:content={contentVisible}
-			class:dismissing
+			class:dismissing={isDismissing}
+			class:closing={isClosing}
+			class:morphing
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="project-card-title"
 			tabindex="-1"
+			style:--sheet-h="{sheetH}px"
 		>
-			<div
-				class="dismiss-ring"
-				class:active={ringProgress > 0.001}
-				style:--ring-progress={ringProgress}
-				aria-hidden="true"
-			>
+			<div bind:this={ringEl} class="dismiss-ring" aria-hidden="true">
 				<svg viewBox="0 0 24 24">
 					<circle class="ring-track" cx="12" cy="12" r="10" />
 					<circle class="ring-progress" cx="12" cy="12" r="10" />
 				</svg>
 			</div>
 
-			<button type="button" class="close" aria-label="Close project" onclick={close}>
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path
-						d="M7 7l10 10M17 7L7 17"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.6"
-						stroke-linecap="round"
-					/>
-				</svg>
-			</button>
-
 			<div class="scroller" bind:this={scrollerEl}>
+				<!-- Hero is in normal flow so it scrolls away with the case study. -->
 				<section class="stage">
 					<div
+						bind:this={heroEl}
 						class="hero"
 						aria-hidden="true"
-						style:background-image={origin?.poster ? `url(${origin.poster})` : undefined}
+						style:background-image={origin?.poster
+							? `url(${origin.poster})`
+							: project.poster
+								? `url(${project.poster})`
+								: undefined}
 					>
-						{#if project.video}
-							<video
-								bind:this={videoEl}
-								class="hero-video"
-								class:ready={videoReady}
-								src={project.video}
-								poster={origin?.poster ?? undefined}
-								muted
-								loop
-								playsinline
-								preload="auto"
-							></video>
+						{#if project.video || origin?.video}
+							<canvas bind:this={coverCanvas} class="hero-cover" aria-hidden="true"></canvas>
+							<!-- Borrowed card <video> is mounted here (one decoder). -->
+							<div
+								bind:this={videoMount}
+								class="hero-video-mount"
+								class:ready={videoReady || Boolean(origin?.poster)}
+							></div>
 						{/if}
 					</div>
 
@@ -733,19 +811,52 @@
 
 				<section class="details">
 					<div class="details-inner">
-						{#each project.body as paragraph (paragraph)}
-							<p>{paragraph}</p>
-						{/each}
+						{#if project.caseStudy?.length}
+							{#each project.caseStudy as block, index (`${block.type}-${index}`)}
+								{#if block.type === 'heading'}
+									<h3 class="case-heading">{block.text}</h3>
+								{:else if block.type === 'paragraph'}
+									<p class="case-copy">{block.text}</p>
+								{:else if block.type === 'figure'}
+									<figure class="case-figure ratio-{block.ratio ?? 'wide'}">
+										<div class="case-ph" aria-hidden="true"></div>
+										{#if block.caption}
+											<figcaption>{block.caption}</figcaption>
+										{/if}
+									</figure>
+								{:else if block.type === 'figures'}
+									<div
+										class="case-figures count-{block.count}"
+										aria-label={block.captions?.join(', ') || 'Figure group'}
+									>
+										{#each Array.from({ length: block.count }, (_, i) => i) as figIndex (
+											figIndex
+										)}
+											<figure class="case-figure ratio-{block.ratio ?? 'square'}">
+												<div class="case-ph" aria-hidden="true"></div>
+												{#if block.captions?.[figIndex]}
+													<figcaption>{block.captions[figIndex]}</figcaption>
+												{/if}
+											</figure>
+										{/each}
+									</div>
+								{/if}
+							{/each}
+						{:else}
+							{#each project.body as paragraph (paragraph)}
+								<p>{paragraph}</p>
+							{/each}
 
-						{#if project.highlights?.length}
-							<div class="highlights" aria-label="Highlights">
-								<h3>Highlights</h3>
-								<ul>
-									{#each project.highlights as item (item)}
-										<li>{item}</li>
-									{/each}
-								</ul>
-							</div>
+							{#if project.highlights?.length}
+								<div class="highlights" aria-label="Highlights">
+									<h3>Highlights</h3>
+									<ul>
+										{#each project.highlights as item (item)}
+											<li>{item}</li>
+										{/each}
+									</ul>
+								</div>
+							{/if}
 						{/if}
 
 						<dl class="meta">
@@ -791,11 +902,10 @@
 	}
 
 	.backdrop.expanded {
-		background: rgb(0 0 0 / calc(0.4 * (1 - var(--dismiss-progress, 0) * 0.85)));
+		background: rgb(0 0 0 / calc(0.4 * (1 - var(--dismiss-progress, 0))));
 	}
 
 	.card {
-		/* Middle 4 of the 8-col grid (card itself is span-8). */
 		--project-copy-width: var(--span-4);
 		position: fixed;
 		z-index: 81;
@@ -803,39 +913,49 @@
 		background: var(--color-bg);
 		color: var(--color-text);
 		outline: none;
-		transform-origin: center center;
-		will-change: top, left, width, height, border-radius, transform;
 	}
 
 	.card.dismissing {
 		cursor: grabbing;
 	}
 
-	.scroller {
-		height: 100%;
-		min-height: 0;
-		overflow: hidden;
+	.card.closing {
+		background: #111;
 	}
 
-	.card.expanded.content .scroller {
+	.scroller {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		overflow: hidden;
+		overscroll-behavior-y: none;
+	}
+
+	.card.expanded:not(.morphing):not(.closing) .scroller {
 		overflow-x: hidden;
 		overflow-y: auto;
 		-webkit-overflow-scrolling: touch;
-		overscroll-behavior: none;
+		overflow-anchor: none;
+		touch-action: pan-y;
 	}
 
-	/* First screen: full-bleed media + caption. */
+	/* Hero block — one viewport tall, then scrolls away with the case study. */
 	.stage {
 		position: relative;
+		z-index: 0;
 		height: 100%;
-		min-height: 100%;
+		flex-shrink: 0;
 		overflow: hidden;
 		background: #111;
 		color: #fff;
 	}
 
-	.card:not(.content) .stage {
-		height: 100%;
+	.card.closing .details,
+	.card.closing .caption,
+	.card.closing .dismiss-ring {
+		opacity: 0 !important;
+		pointer-events: none !important;
+		visibility: hidden;
 	}
 
 	.hero {
@@ -847,7 +967,10 @@
 		background-position: center;
 	}
 
-	.hero-video {
+	.hero-cover {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
 		display: block;
 		width: 100%;
 		height: 100%;
@@ -857,7 +980,36 @@
 		opacity: 0;
 	}
 
-	.hero-video.ready {
+	.hero-video-mount {
+		position: absolute;
+		inset: 0;
+		opacity: 0;
+	}
+
+	.hero-video-mount.ready {
+		opacity: 1;
+	}
+
+	.hero-video-mount :global(.hero-video) {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: center;
+		pointer-events: none;
+		transform: translateZ(0);
+		backface-visibility: hidden;
+	}
+
+	/*
+	 * During open/close layout animation the video layer often paints black.
+	 * Show the live canvas cover for the morph only; poster sits underneath.
+	 */
+	.card.morphing .hero-video-mount {
+		opacity: 0 !important;
+	}
+
+	.card.morphing .hero-cover {
 		opacity: 1;
 	}
 
@@ -882,6 +1034,12 @@
 			transform var(--motion-content, 220ms) var(--motion-ease, ease);
 	}
 
+	/* Fade caption as the dismiss ring takes over — hero stays put underneath. */
+	.card.content.dismissing .caption {
+		opacity: calc(1 - var(--ring-progress, 0));
+		transition: none;
+	}
+
 	.caption-inner {
 		width: var(--project-copy-width);
 		max-width: 100%;
@@ -893,11 +1051,6 @@
 		opacity: 1;
 		transform: translateY(0);
 		pointer-events: auto;
-	}
-
-	.card.dismissing .caption {
-		opacity: 0;
-		pointer-events: none;
 	}
 
 	.caption h2 {
@@ -915,7 +1068,6 @@
 		color: rgb(255 255 255 / 0.88);
 	}
 
-	/* Rest of the project scrolls below the hero — never over it. */
 	.details {
 		position: relative;
 		z-index: 1;
@@ -935,11 +1087,6 @@
 		pointer-events: auto;
 	}
 
-	.card.dismissing .details {
-		opacity: 0;
-		pointer-events: none;
-	}
-
 	.details-inner {
 		width: var(--project-copy-width);
 		max-width: 100%;
@@ -956,11 +1103,85 @@
 		}
 	}
 
-	.details-inner > p {
+	.details-inner > p,
+	.case-copy {
 		margin: 0 0 0.95rem;
 		font-size: 1rem;
 		line-height: 1.55;
 		color: var(--color-muted);
+	}
+
+	.case-heading {
+		margin: 2.5rem 0 0.85rem;
+		font-size: clamp(1.15rem, 2vw, 1.35rem);
+		font-weight: var(--font-weight);
+		line-height: 1.25;
+		color: var(--color-text);
+	}
+
+	.case-heading:first-child {
+		margin-top: 0;
+	}
+
+	.case-figure {
+		margin: 1.5rem 0 0.35rem;
+		padding: 0;
+		content-visibility: auto;
+		contain-intrinsic-size: auto 16rem;
+	}
+
+	.case-ph {
+		display: block;
+		width: 100%;
+		border-radius: 1rem;
+		background: color-mix(in srgb, var(--color-text) 10%, var(--color-bg));
+	}
+
+	.case-figure.ratio-ultrawide .case-ph {
+		aspect-ratio: 21 / 9;
+	}
+
+	.case-figure.ratio-wide .case-ph {
+		aspect-ratio: 16 / 10;
+	}
+
+	.case-figure.ratio-square .case-ph {
+		aspect-ratio: 1 / 1;
+	}
+
+	.case-figure.ratio-tall .case-ph {
+		aspect-ratio: 4 / 5;
+	}
+
+	.case-figure figcaption {
+		margin: 0.55rem 0 0;
+		font-size: 0.85rem;
+		line-height: 1.4;
+		color: var(--color-muted);
+	}
+
+	.case-figures {
+		display: grid;
+		gap: 0.85rem;
+		margin: 1.5rem 0 0.35rem;
+	}
+
+	.case-figures.count-2 {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.case-figures.count-3 {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	.case-figures .case-figure {
+		margin: 0;
+	}
+
+	@media (max-width: 800px) {
+		.case-figures.count-3 {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	.highlights {
@@ -1024,18 +1245,22 @@
 	.dismiss-ring {
 		--ring-len: 62.832;
 		position: absolute;
-		top: 1rem;
+		top: 44px;
 		left: 50%;
-		z-index: 5;
+		z-index: 8;
 		width: 24px;
 		height: 24px;
 		opacity: 0;
-		transform: translateX(-50%);
+		transform: translate(-50%, -50%) scale(0.72);
 		pointer-events: none;
+		transition:
+			opacity 180ms cubic-bezier(0.22, 1, 0.36, 1),
+			transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
 	.dismiss-ring.active {
-		opacity: 1;
+		opacity: clamp(0.35, calc(var(--ring-progress, 0) * 2.2), 1);
+		transform: translate(-50%, -50%) scale(1);
 	}
 
 	.dismiss-ring svg {
@@ -1062,64 +1287,17 @@
 		stroke-dashoffset: calc(var(--ring-len) * (1 - var(--ring-progress, 0)));
 	}
 
-	.close {
-		position: absolute;
-		top: 1rem;
-		right: 1rem;
-		z-index: 5;
-		display: grid;
-		place-items: center;
-		width: 2.5rem;
-		height: 2.5rem;
-		padding: 0;
-		border: 0;
-		border-radius: 999px;
-		background: rgb(0 0 0 / 0.42);
-		color: #fff;
-		cursor: pointer;
-		opacity: 0;
-		transform: scale(0.92);
-		pointer-events: none;
-		backdrop-filter: blur(8px);
-		transition:
-			opacity var(--motion-content, 180ms) var(--motion-ease, ease),
-			transform var(--motion-content, 180ms) var(--motion-ease, ease),
-			background-color 140ms ease;
-	}
-
-	.card.content .close {
-		opacity: 1;
-		transform: scale(1);
-		pointer-events: auto;
-	}
-
-	.card.dismissing .close {
-		opacity: 0;
-		transform: scale(0.92);
-		pointer-events: none;
-	}
-
-	.close:hover {
-		background: rgb(0 0 0 / 0.58);
-	}
-
-	.close svg {
-		width: 1.1rem;
-		height: 1.1rem;
-	}
-
 	@media (prefers-reduced-motion: reduce) {
 		.backdrop,
 		.card,
 		.caption,
 		.details,
-		.dismiss-ring,
-		.close {
+		.dismiss-ring {
 			transition: none !important;
 		}
 
-		.hero-video {
-			display: none;
+		.hero-video-mount {
+			opacity: 1;
 		}
 	}
 </style>

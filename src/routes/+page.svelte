@@ -1,7 +1,7 @@
 <script lang="ts">
 	import MagneticCard from '$lib/components/MagneticCard.svelte';
 	import MagneticPill from '$lib/components/MagneticPill.svelte';
-	import { craftNotes, elsewhere, profile, roles, workProjects } from '$lib/data';
+	import { craftNotes, elsewhere, profile, roles, testimonials, workProjects } from '$lib/data';
 	import { openProject, openProjectId } from '$lib/projectSheet';
 
 	const featured = workProjects.slice(0, 4);
@@ -58,8 +58,10 @@
 					{#each column as project (project.id)}
 						<article class="showcase-item" class:lifted={activeId === project.id}>
 							<MagneticCard
+								data-project-id={project.id}
 								size={project.cardSize ?? 'mid'}
 								video={project.video}
+								poster={project.poster}
 								title={project.title}
 								description={project.description}
 								lifted={activeId === project.id}
@@ -97,6 +99,24 @@
 						<span class="role-company">{role.company}</span>
 					</span>
 					<span class="role-dates">{role.dates}</span>
+				</li>
+			{/each}
+		</ul>
+	</section>
+
+	<section class="section testimonials" aria-labelledby="testimonials-title">
+		<h2 id="testimonials-title" class="section-title">Testimonials</h2>
+
+		<ul class="testimonial-list">
+			{#each testimonials as item (item.name)}
+				<li>
+					<blockquote>
+						<p>“{item.quote}”</p>
+						<footer>
+							<span class="testimonial-name">{item.name}</span>
+							<span class="testimonial-meta">{item.role} at {item.company}</span>
+						</footer>
+					</blockquote>
 				</li>
 			{/each}
 		</ul>
@@ -270,6 +290,11 @@
 		min-width: 0;
 	}
 
+	.showcase-col,
+	.showcase-item {
+		overflow: visible;
+	}
+
 	.showcase-item {
 		width: 100%;
 		transition: opacity 220ms ease;
@@ -317,6 +342,43 @@
 	.role-dates {
 		color: var(--color-muted);
 		font-size: 0.9rem;
+	}
+
+	.testimonial-list {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: grid;
+		gap: 2.5rem;
+		max-width: 40rem;
+	}
+
+	.testimonial-list blockquote {
+		margin: 0;
+	}
+
+	.testimonial-list p {
+		margin: 0 0 0.85rem;
+		font-size: 1.05rem;
+		line-height: 1.55;
+		color: var(--color-text);
+	}
+
+	.testimonial-list footer {
+		display: grid;
+		gap: 0.15rem;
+	}
+
+	.testimonial-name {
+		font-size: 0.95rem;
+		font-weight: var(--font-weight);
+		line-height: 1.35;
+	}
+
+	.testimonial-meta {
+		font-size: 0.9rem;
+		color: var(--color-muted);
+		line-height: 1.4;
 	}
 
 	.note-row {

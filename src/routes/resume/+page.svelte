@@ -33,7 +33,7 @@
 		</ul>
 		<p class="earlier">
 			<a href={profile.linkedin} target="_blank" rel="noopener noreferrer">
-				Earlier work on LinkedIn
+				More detail on LinkedIn
 				<span class="external" aria-hidden="true">↗</span>
 			</a>
 		</p>
