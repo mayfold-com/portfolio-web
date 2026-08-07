@@ -1,0 +1,140 @@
+:root {
+	--color-bg: #141414;
+	--color-text: #EEE8DE;
+	--color-muted: #9c968c;
+	--color-accent: #EEE8DE;
+	--color-swatch: #141414;
+	--page-max: 72rem;
+	--page-pad: clamp(1.5rem, 4vw, 3.5rem);
+	--page-title-space: 160px;
+	--gap: clamp(2rem, 5vw, 4rem);
+	/* 8-col grid: nav in 1–2, content from 3 */
+	--grid-max: 1280px;
+	--grid-columns: 8;
+	--grid-gap: 20px;
+	--grid-pad: var(--page-pad);
+	--grid-width: min(100vw, var(--grid-max));
+	--grid-offset: max(0px, (100vw - var(--grid-width)) / 2);
+	--grid-col: calc(
+		(var(--grid-width) - (2 * var(--grid-pad)) - ((var(--grid-columns) - 1) * var(--grid-gap))) /
+			var(--grid-columns)
+	);
+	--sidebar-width: calc((2 * var(--grid-col)) + var(--grid-gap));
+	/* Content starts at column 3 */
+	--content-start: calc(
+		var(--grid-offset) + var(--grid-pad) + (2 * var(--grid-col)) + (2 * var(--grid-gap))
+	);
+	/* Full remaining track (cols 3–8) and common shorter spans */
+	--content-span: calc((6 * var(--grid-col)) + (5 * var(--grid-gap)));
+	--span-3: calc((3 * var(--grid-col)) + (2 * var(--grid-gap)));
+	--span-4: calc((4 * var(--grid-col)) + (3 * var(--grid-gap)));
+	--span-5: calc((5 * var(--grid-col)) + (4 * var(--grid-gap)));
+	--span-8: calc((8 * var(--grid-col)) + (7 * var(--grid-gap)));
+	--font: 'Söhne', sans-serif;
+	--font-variation: normal;
+	--font-features: normal;
+	--font-weight: 400;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	background-color: var(--color-bg);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+}
+
+body {
+	margin: 0;
+	min-height: 100vh;
+	background-color: var(--color-bg);
+	color: var(--color-text);
+	font-family: var(--font);
+	font-variation-settings: var(--font-variation, normal);
+	font-feature-settings: var(--font-features, normal);
+	font-weight: var(--font-weight, 500);
+	font-size: 1rem;
+	line-height: 1.55;
+	transition:
+		background-color 280ms ease,
+		color 280ms ease;
+}
+
+/* Form controls don't inherit type from body — keep them on the font system */
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	font-family: var(--font);
+	font-variation-settings: var(--font-variation, normal);
+	font-feature-settings: var(--font-features, normal);
+	font-weight: inherit;
+	color: inherit;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+
+strong,
+b {
+	font-weight: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	font-weight: inherit;
+}
+
+/* Keep theme bg under view transitions — otherwise the browser canvas flashes white */
+::view-transition,
+::view-transition-group(root) {
+	background-color: var(--color-bg);
+}
+
+/* Page transitions — content fades/slides; chrome stays put */
+::view-transition-old(page-content) {
+	animation: 220ms ease both page-out;
+}
+
+::view-transition-new(page-content) {
+	animation: 320ms cubic-bezier(0.22, 1, 0.36, 1) both page-in;
+}
+
+@keyframes page-out {
+	to {
+		opacity: 0;
+		transform: translateY(-0.6rem);
+	}
+}
+
+@keyframes page-in {
+	from {
+		opacity: 0;
+		transform: translateY(0.9rem);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none !important;
+	}
+}

@@ -1,0 +1,49 @@
+/* Self-hosted typefaces (OFL) */
+
+@font-face {
+	font-family: 'Alpha Lyrae';
+	font-style: normal;
+	font-weight: 500;
+	font-display: swap;
+	src: url('/fonts/AlphaLyrae-Medium.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Opening Hours Sans';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/OpeningHoursSans-Regular.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Aspekta';
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url('/fonts/AspektaVF.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Overused Grotesk';
+	font-style: normal;
+	font-weight: 300 900;
+	font-display: swap;
+	src: url('/fonts/OverusedGrotesk-VF.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'FT Pilar';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/FTPilar-Regular.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Söhne';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/soehne-buch.woff2') format('woff2');
+}

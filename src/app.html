@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="text-scale" content="scale" />
+		<script>
+			(function () {
+				try {
+					var themes = {
+						ink: { bg: '#141414', text: '#EEE8DE', muted: '#9c968c', accent: '#EEE8DE' },
+						paper: { bg: '#ffffff', text: '#000000', muted: '#555555', accent: '#1a73e8' },
+						amber: { bg: '#f2b83c', text: '#000000', muted: '#4a3a12', accent: '#1a73e8' },
+						blue: { bg: '#0b4db8', text: '#f4f7ff', muted: '#c5d6f5', accent: '#1a73e8' },
+						green: { bg: '#2f6b3a', text: '#f3efe6', muted: '#d0dece', accent: '#3f7d4e' },
+						purple: { bg: '#4a1f5c', text: '#f8f0ff', muted: '#d8c3e4', accent: '#5b2c6f' }
+					};
+					var id = localStorage.getItem('naim-theme');
+					var theme = themes[id] || themes.ink;
+					var root = document.documentElement;
+					root.dataset.theme = themes[id] ? id : 'ink';
+					root.style.setProperty('--color-bg', theme.bg);
+					root.style.setProperty('--color-text', theme.text);
+					root.style.setProperty('--color-muted', theme.muted);
+					root.style.setProperty('--color-accent', theme.accent);
+					root.style.backgroundColor = theme.bg;
+					root.style.colorScheme = theme.bg === '#ffffff' || theme.bg === '#f2b83c' ? 'light' : 'dark';
+					var meta = document.querySelector('meta[name="theme-color"]');
+					if (!meta) {
+						meta = document.createElement('meta');
+						meta.setAttribute('name', 'theme-color');
+						document.head.appendChild(meta);
+					}
+					meta.setAttribute('content', theme.bg);
+
+					var fontFamilies = {
+						inter: 'Inter',
+						geist: 'Geist',
+						'geist-pixel': 'Geist Pixel',
+						'miranda-sans': 'Miranda Sans',
+						'google-sans': 'Google Sans',
+						gabarito: 'Gabarito',
+						'alpha-lyrae': 'Alpha Lyrae',
+						'opening-hours-sans': 'Opening Hours Sans',
+						aspekta: 'Aspekta',
+						'overused-grotesk': 'Overused Grotesk',
+						switzer: 'Switzer',
+						'funnel-sans': 'Funnel Sans',
+						pilar: 'FT Pilar',
+						soehne: 'Söhne'
+					};
+					var fontId = localStorage.getItem('naim-font');
+					var family = fontFamilies[fontId] || fontFamilies.soehne;
+					root.dataset.font = fontFamilies[fontId] ? fontId : 'soehne';
+					root.style.setProperty('--font', "'" + family + "', sans-serif");
+					if (fontId === 'geist-pixel') {
+						root.style.setProperty('--font-variation', '"ELSH" 1');
+					}
+					if (fontId === 'alpha-lyrae') {
+						root.style.setProperty('--font-features', '"calt" 1, "dlig" 1');
+					}
+
+					var weight = localStorage.getItem('naim-font-weight');
+					var allowed = { 300: 1, 400: 1, 500: 1, 600: 1, 700: 1, 800: 1 };
+					root.style.setProperty('--font-weight', allowed[weight] ? weight : '400');
+				} catch (_) {}
+			})();
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>
