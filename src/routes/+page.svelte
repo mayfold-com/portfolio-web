@@ -24,19 +24,8 @@
 
 <main class="page">
 	<header class="intro">
-		<h1 class="sr-only">Naim Chayata</h1>
-		<div class="bio">
-			<p class="lead">
-				{#each profile.bioLead as part (part.text)}
-					{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}
-				{/each}
-			</p>
-			<p class="rest">
-				{#each profile.bioRest as part (part.text)}
-					{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}
-				{/each}
-			</p>
-		</div>
+		<h1 class="title">{profile.title}</h1>
+		<p class="subline">{profile.subline}</p>
 
 		<div class="actions">
 			<MagneticPill
@@ -185,49 +174,30 @@
 	}
 
 	.intro {
-		/* Match sidebar/nav top padding so the lead lines up with “Naim Chayata”. */
-		margin: var(--page-pad) 0 160px;
-		max-width: 36rem;
+		margin: var(--page-title-space) 0 160px;
+		max-width: min(100%, 36rem);
 	}
 
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border: 0;
-	}
-
-	.bio {
-		display: grid;
-		gap: 1em;
-		font-size: 24px;
-		line-height: 1.55;
-	}
-
-	.bio p {
+	.title {
 		margin: 0;
-	}
-
-	.lead {
-		color: var(--color-text);
-	}
-
-	.lead strong {
+		font-size: var(--page-title-size);
 		font-weight: var(--font-weight);
+		line-height: 1.15;
+		letter-spacing: -0.03em;
+		color: var(--color-text);
+		white-space: pre-line;
+		max-width: 14em;
 	}
 
-	.rest {
+	.subline {
+		margin: 1.1rem 0 0;
+		font-size: 15px;
+		font-weight: var(--font-weight, 500);
+		line-height: 1.55;
 		color: var(--color-text);
 		opacity: 0.4;
-	}
-
-	.rest strong {
-		font-weight: var(--font-weight);
+		/* ~3 lines at this size */
+		max-width: 32rem;
 	}
 
 	.actions {
@@ -468,7 +438,7 @@
 		}
 
 		.intro {
-			margin: 0 0 4rem;
+			margin: var(--page-title-space) 0 4rem;
 			max-width: none;
 		}
 

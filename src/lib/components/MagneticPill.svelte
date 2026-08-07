@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { poseTransform } from '$lib/magnet';
+	import { CHROME_MAGNET, poseTransform } from '$lib/magnet';
 	import { MagnetSpring } from '$lib/magnetSpring.svelte';
 	import type { Snippet } from 'svelte';
 	import type { HTMLAnchorAttributes } from 'svelte/elements';
@@ -20,7 +20,7 @@
 	class="pill {variant} {className}"
 	{href}
 	{...rest}
-	onmousemove={(event) => spring.move(event)}
+	onmousemove={(event) => spring.move(event, CHROME_MAGNET)}
 	onmouseleave={() => spring.release()}
 	onblur={() => spring.release()}
 >

@@ -1,11 +1,19 @@
-export const MAGNET_STRENGTH = 0.12;
-export const MAGNET_MAX = 3;
+/** Nav pills + CTAs — a touch stronger than project cards. */
+export const MAGNET_STRENGTH = 0.16;
+export const MAGNET_MAX = 5;
+export const MAGNET_ROTATE_MAX = 2.4;
 
 /** Softer follow + rotation for large project cards. */
 export const CARD_MAGNET_STRENGTH = 0.08;
 export const CARD_MAGNET_MAX = 2.5;
 export const CARD_ROTATE_MAX = 1.6;
 export const CARD_MAGNET_LERP = 0.12;
+
+export const CHROME_MAGNET = {
+	strength: MAGNET_STRENGTH,
+	max: MAGNET_MAX,
+	rotateMax: MAGNET_ROTATE_MAX
+} as const;
 
 export type MagnetPose = {
 	x: number;

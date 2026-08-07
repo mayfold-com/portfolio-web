@@ -1,19 +1,10 @@
 export const profile = {
 	name: 'Naim Chayata',
 	location: 'Utrecht, The Netherlands',
-	headline: 'Product Builder · Former UX Manager at Adyen',
-	bioLead: [
-		{
-			text: 'Hi. I’m Naim Chayata, a designer based in Utrecht. Right now I’m building Mayfold, helping fashion brands make photos that don’t look generated.',
-			bold: false
-		}
-	],
-	bioRest: [
-		{
-			text: 'Before that I spent almost seven years at Adyen, last as UX Manager. I care about systems, craft, and shipping work that still feels good a year later.',
-			bold: false
-		}
-	],
+	/** Two-line hero. Soft break is intentional. */
+	title: 'Hi. I’m Naim, a designer\nwho loves to code',
+	subline:
+		'I build products from Utrecht. Right now that is Mayfold, helping fashion brands make photos that don’t look generated. Before that I spent almost seven years at Adyen, last as UX Manager.',
 	email: null as string | null,
 	linkedin: 'https://www.linkedin.com/in/naimchayata/'
 };

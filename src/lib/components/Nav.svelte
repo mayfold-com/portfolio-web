@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import { navItems } from '$lib/data';
 
-	import { poseTransform } from '$lib/magnet';
+	import { CHROME_MAGNET, poseTransform } from '$lib/magnet';
 	import { MagnetSpring } from '$lib/magnetSpring.svelte';
 
 	const DOT = 6;
@@ -75,7 +75,9 @@
 
 	function onLinkEnter(href: string) {
 		if (selecting) return;
-		hoveredHref = href;
+		// Don’t keep a hover on the active item — after a CTA navigation that
+		// item becomes a link and the old hover would render as a stuck pill.
+		hoveredHref = isActive(href) ? null : href;
 		updateIndicator();
 	}
 
@@ -85,15 +87,20 @@
 			return;
 		}
 
-		spring.move(event);
+		spring.move(event, CHROME_MAGNET);
 	}
 
-	function onNavLeave() {
-		if (selecting) return;
+	function clearHover() {
 		hoveredHref = null;
 		pressed = false;
 		spring.release();
-		updateIndicator();
+	}
+
+	function onNavLeave() {
+		// Always drop hover — even mid-select — so a leftover pill can’t stick
+		// after leaving the nav (homepage CTAs, keyboard nav, etc.).
+		clearHover();
+		if (!selecting) updateIndicator();
 	}
 
 	function markSelection(href: string) {
@@ -144,7 +151,9 @@
 
 	afterNavigate(() => {
 		selecting = false;
-		pressed = false;
+		// Homepage CTAs (View work / Full resume) never go through markSelection,
+		// so a prior hover on “Naim Chayata” would otherwise keep the pill there.
+		clearHover();
 
 		if (pendingLock) {
 			pendingLock = false;

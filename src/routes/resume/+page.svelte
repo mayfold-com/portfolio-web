@@ -50,9 +50,10 @@
 
 	.title {
 		margin: var(--page-title-space) 0;
-		font-size: clamp(2.75rem, 7vw, 5rem);
+		font-size: var(--page-title-size);
 		font-weight: var(--font-weight);
-		line-height: 0.95;
+		line-height: 1.15;
+		letter-spacing: -0.03em;
 		width: fit-content;
 		max-width: 100%;
 	}

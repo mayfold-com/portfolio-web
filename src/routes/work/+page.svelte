@@ -57,9 +57,10 @@
 
 	.title {
 		margin: var(--page-title-space) 0 clamp(2.75rem, 7vw, 4rem);
-		font-size: clamp(2.75rem, 7vw, 5rem);
+		font-size: var(--page-title-size);
 		font-weight: var(--font-weight);
-		line-height: 0.95;
+		line-height: 1.15;
+		letter-spacing: -0.03em;
 		width: fit-content;
 	}
 
@@ -94,10 +95,6 @@
 		.page {
 			width: 100%;
 			padding: 0 var(--page-pad) var(--page-pad);
-		}
-
-		.title {
-			margin-top: var(--page-title-space);
 		}
 
 		.list {
