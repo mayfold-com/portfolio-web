@@ -185,7 +185,8 @@
 	}
 
 	.intro {
-		margin: var(--page-title-space) 0 160px;
+		/* Match sidebar/nav top padding so the lead lines up with “Naim Chayata”. */
+		margin: var(--page-pad) 0 160px;
 		max-width: 36rem;
 	}
 
@@ -467,7 +468,7 @@
 		}
 
 		.intro {
-			margin: var(--page-title-space) 0 4rem;
+			margin: 0 0 4rem;
 			max-width: none;
 		}
 
