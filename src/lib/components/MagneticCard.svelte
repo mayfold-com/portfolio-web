@@ -191,6 +191,16 @@
 		-webkit-user-drag: none;
 	}
 
+	.card:focus {
+		outline: none;
+	}
+
+	/* Focus ring on the media thumb only — not title/description below. */
+	.card:focus-visible .card-shell {
+		outline: 2px solid #5b9dd9;
+		outline-offset: 3px;
+	}
+
 	.card-shell {
 		position: relative;
 		display: block;

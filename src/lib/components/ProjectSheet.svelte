@@ -91,6 +91,8 @@
 	 * Hero scrolls with the page content once you leave the top.
 	 */
 	const PULL_RANGE = 280;
+	/** Max open→thumb morph while pulling to dismiss (ring at 100% ⇒ 10% along path). */
+	const DISMISS_PREVIEW = 0.1;
 	const FLICK_VELOCITY = 0.7;
 	const DEAD_ZONE = 8;
 	const VELOCITY_WINDOW_MS = 100;
@@ -161,6 +163,43 @@
 
 	function clamp01(t: number) {
 		return Math.min(1, Math.max(0, t));
+	}
+
+	function lerp(a: number, b: number, t: number) {
+		return a + (b - a) * t;
+	}
+
+	function lerpRect(from: Rect, to: Rect, t: number): Rect {
+		return withPxRadius({
+			top: lerp(from.top, to.top, t),
+			left: lerp(from.left, to.left, t),
+			width: lerp(from.width, to.width, t),
+			height: lerp(from.height, to.height, t),
+			radius: `${lerp(radiusPx(from.radius), radiusPx(to.radius), t)}px`
+		});
+	}
+
+	function currentCardRect(): Rect {
+		if (!cardEl) return openRect ?? finalRect();
+		const r = cardEl.getBoundingClientRect();
+		return withPxRadius({
+			top: r.top,
+			left: r.left,
+			width: r.width,
+			height: r.height,
+			radius: getComputedStyle(cardEl).borderRadius || '1.75rem'
+		});
+	}
+
+	/** Scrub a few percent toward the thumbnail while the dismiss ring fills. */
+	function paintDismissPreview(progress: number) {
+		if (!cardEl || !expanded || phase === 'closing') return;
+		const open = openRect ?? finalRect();
+		const thumb = thumbRect();
+		const t = clamp01(progress) * DISMISS_PREVIEW;
+		const rect = lerpRect(open, thumb, t);
+		applyChrome(cardEl, rect, false);
+		sheetH = rect.height;
 	}
 
 	/** Two-state layout chrome — no scale(). */
@@ -284,6 +323,14 @@
 		clearPullSamples();
 		paintRing(0);
 		if (phase === 'dismissing') phase = 'open';
+		if (cardEl && expanded) {
+			const open = openRect ?? finalRect();
+			applyChrome(cardEl, open, !reduceMotion, {
+				duration: Math.min(220, motion.closeDuration),
+				ease: motion.closeEase
+			});
+			sheetH = open.height;
+		}
 	}
 
 	function paintDismiss(nextRaw: number) {
@@ -293,8 +340,8 @@
 		notePullSample(rawPull);
 		const progress = clamp01(rawPull / PULL_RANGE);
 		if (rawPull > DEAD_ZONE && phase === 'open') phase = 'dismissing';
-		// Ring only — hero is outside the scroller, so it cannot move.
 		paintRing(progress);
+		paintDismissPreview(progress);
 
 		if (rawPull >= PULL_RANGE) {
 			// Via close() so scroll-to-dismiss also pops `?project=` history.
@@ -413,7 +460,8 @@
 			return;
 		}
 
-		const from = openRect ?? finalRect();
+		// Continue from the live preview pose (up to 10% along the path) into the thumb.
+		const from = currentCardRect();
 		const thumb = thumbRect();
 		const duration = motion.closeDuration;
 
