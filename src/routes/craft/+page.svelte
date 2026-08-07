@@ -33,6 +33,18 @@
 		padding-left: 0;
 	}
 
+	@media (max-width: 800px) {
+		.page {
+			width: 100%;
+			max-width: none;
+			padding: 0 var(--page-pad) var(--page-pad);
+		}
+
+		.title {
+			margin-top: var(--page-title-space);
+		}
+	}
+
 	.title {
 		margin: var(--page-title-space) 0;
 		font-size: clamp(2.75rem, 7vw, 5rem);

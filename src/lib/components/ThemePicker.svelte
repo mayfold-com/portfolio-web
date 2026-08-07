@@ -115,11 +115,22 @@
 		outline-offset: 2px;
 	}
 
-	@media (max-width: 600px) {
+	@media (max-width: 800px) {
 		.theme-picker {
-			top: 0.9rem;
-			right: 0.9rem;
-			min-width: 8.5rem;
+			top: 0.75rem;
+			right: var(--page-pad);
+			min-width: 7.25rem;
+		}
+
+		.label {
+			display: none;
+		}
+
+		select {
+			padding-top: 0.45rem;
+			padding-bottom: 0.45rem;
+			font-size: 0.85rem;
+			box-shadow: 0 4px 14px rgb(0 0 0 / 0.1);
 		}
 	}
 </style>

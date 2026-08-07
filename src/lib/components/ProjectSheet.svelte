@@ -71,6 +71,8 @@
 	let pendingHistoryPop = false;
 	/** True once dismiss committed — blocks further overscroll / re-entrant close(). */
 	let closeRequested = false;
+	/** Element that opened the sheet — restore focus on close. */
+	let restoreFocusEl: HTMLElement | null = null;
 
 	/** 0–1 ring fill (non-reactive — gesture paints without re-rendering). */
 	let ringProgress = 0;
@@ -563,17 +565,96 @@
 		closeRequested = false;
 		const shouldPop = pendingHistoryPop;
 		pendingHistoryPop = false;
+		const focusEl = restoreFocusEl;
+		restoreFocusEl = null;
 		// Clear store first so URL sync (Back) does not re-trigger close().
 		clearProject();
 		if (shouldPop) syncUrlAfterClose();
+		queueMicrotask(() => focusEl?.focus({ preventScroll: true }));
 	}
 
 	function onBackdropClick(event: MouseEvent) {
 		if (event.target === event.currentTarget && canDismiss) close();
 	}
 
+	function isTypingTarget(target: EventTarget | null) {
+		if (!(target instanceof HTMLElement)) return false;
+		const tag = target.tagName;
+		return (
+			tag === 'INPUT' ||
+			tag === 'TEXTAREA' ||
+			tag === 'SELECT' ||
+			target.isContentEditable
+		);
+	}
+
+	function isActivateableTarget(target: EventTarget | null) {
+		if (!(target instanceof HTMLElement)) return false;
+		return Boolean(
+			target.closest('a[href], button, summary, [role="button"], input, textarea, select, label')
+		);
+	}
+
+	function focusScroller() {
+		scrollerEl?.focus({ preventScroll: true });
+	}
+
+	function scrollSheetBy(delta: number) {
+		if (!scrollerEl) return false;
+		const maxScroll = Math.max(0, scrollerEl.scrollHeight - scrollerEl.clientHeight);
+		const next = Math.min(maxScroll, Math.max(0, scrollerEl.scrollTop + delta));
+		if (next === scrollerEl.scrollTop) return false;
+		scrollerEl.scrollTop = next;
+		return true;
+	}
+
 	function onKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape' && rendered && canDismiss) close();
+		if (!rendered) return;
+
+		if (event.key === 'Escape' && canDismiss) {
+			close();
+			return;
+		}
+
+		if (!canDismiss || !scrollerEl || morphing || closeRequested) return;
+		if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+		if (isTypingTarget(event.target)) return;
+
+		const scroller = scrollerEl;
+		const line = Math.max(40, Math.round(scroller.clientHeight * 0.12));
+		const page = Math.max(line, Math.round(scroller.clientHeight * 0.85));
+
+		switch (event.key) {
+			case 'ArrowDown':
+				event.preventDefault();
+				scrollSheetBy(line);
+				return;
+			case 'ArrowUp':
+				event.preventDefault();
+				scrollSheetBy(-line);
+				return;
+			case 'PageDown':
+				event.preventDefault();
+				scrollSheetBy(page);
+				return;
+			case 'PageUp':
+				event.preventDefault();
+				scrollSheetBy(-page);
+				return;
+			case 'Home':
+				event.preventDefault();
+				scroller.scrollTop = 0;
+				return;
+			case 'End':
+				event.preventDefault();
+				scroller.scrollTop = scroller.scrollHeight;
+				return;
+			case ' ':
+				if (isActivateableTarget(event.target)) return;
+				event.preventDefault();
+				scrollSheetBy(event.shiftKey ? -page : page);
+				return;
+		}
 	}
 
 	function onResize() {
@@ -684,6 +765,8 @@
 		});
 
 		document.body.style.overflow = 'hidden';
+		restoreFocusEl =
+			document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		phase = 'opening';
 		morphing = true;
 		rawPull = 0;
@@ -714,6 +797,7 @@
 			if (phase !== 'open') return;
 			contentVisible = true;
 			if (scrollerEl) scrollerEl.scrollTop = 0;
+			focusScroller();
 			if (videoEl) void videoEl.play().catch(() => {});
 		};
 
@@ -825,7 +909,7 @@
 				</svg>
 			</div>
 
-			<div class="scroller" bind:this={scrollerEl}>
+			<div class="scroller" bind:this={scrollerEl} tabindex="-1">
 				<!-- Hero is in normal flow so it scrolls away with the case study. -->
 				<section class="stage">
 					<div
@@ -977,6 +1061,7 @@
 		z-index: 1;
 		overflow: hidden;
 		overscroll-behavior-y: none;
+		outline: none;
 	}
 
 	.card.expanded:not(.morphing):not(.closing) .scroller {

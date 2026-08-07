@@ -39,7 +39,7 @@
 		height: 40px;
 		padding: 0 20px;
 		border-radius: 999px;
-		font-size: 0.95rem;
+		font-size: 15px;
 		font-weight: var(--font-weight);
 		line-height: 1;
 		text-decoration: none;

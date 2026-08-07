@@ -257,7 +257,7 @@
 		border-radius: 999px;
 		color: var(--color-text);
 		opacity: 0.4;
-		font-size: 1rem;
+		font-size: 15px;
 		font-weight: var(--font-weight, 500);
 		line-height: 1.35;
 		text-decoration: none;
@@ -329,6 +329,29 @@
 		100% {
 			opacity: 1;
 			transform: scale(1);
+		}
+	}
+
+	@media (max-width: 800px) {
+		.nav {
+			width: 100%;
+			padding-left: 0;
+		}
+
+		ul {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 0.15rem 0.2rem;
+		}
+
+		.item {
+			padding: 0.4rem 0.7rem;
+		}
+
+		/* Vertical gutter-dot doesn't map to a horizontal row. */
+		.indicator {
+			display: none;
 		}
 	}
 

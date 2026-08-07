@@ -138,3 +138,18 @@ h6 {
 		animation: none !important;
 	}
 }
+
+/* Mobile: drop the desktop sidebar offset and let content use the full width. */
+@media (max-width: 800px) {
+	:root {
+		--page-pad: 1.25rem;
+		--page-title-space: 2.5rem;
+		--content-start: 0px;
+		--content-span: 100%;
+		--sidebar-width: 100%;
+		--span-3: 100%;
+		--span-4: 100%;
+		--span-5: 100%;
+		--span-8: calc(100vw - (2 * var(--page-pad)));
+	}
+}

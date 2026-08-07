@@ -120,11 +120,12 @@
 		background: rgb(140 55 45 / 0.2);
 	}
 
-	@media (max-width: 600px) {
+	@media (max-width: 800px) {
 		.trigger {
-			--trigger-size: 3rem;
-			top: calc(0.9rem + 4.1rem + 0.65rem);
-			right: 0.9rem;
+			--trigger-size: 2.75rem;
+			/* Under the compact theme select (no label). */
+			top: calc(0.75rem + 2.55rem + 0.55rem);
+			right: var(--page-pad);
 		}
 	}
 

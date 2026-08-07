@@ -94,15 +94,23 @@
 	@media (max-width: 800px) {
 		.sidebar {
 			position: sticky;
+			top: 0;
+			left: 0;
 			width: 100%;
 			height: auto;
-			padding-bottom: 0.5rem;
+			/* Leave room for fixed theme + grid controls on the right. */
+			padding: 0.85rem calc(7.75rem + var(--page-pad)) 0.65rem var(--page-pad);
 			background: color-mix(in srgb, var(--color-bg) 92%, transparent);
 			backdrop-filter: blur(10px);
 		}
 
 		.main {
 			margin-left: 0;
+			width: 100%;
+		}
+
+		.content {
+			width: 100%;
 		}
 	}
 </style>

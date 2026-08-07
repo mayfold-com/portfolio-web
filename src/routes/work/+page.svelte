@@ -91,6 +91,15 @@
 	}
 
 	@media (max-width: 800px) {
+		.page {
+			width: 100%;
+			padding: 0 var(--page-pad) var(--page-pad);
+		}
+
+		.title {
+			margin-top: var(--page-title-space);
+		}
+
 		.list {
 			width: 100%;
 		}

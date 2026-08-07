@@ -25,18 +25,18 @@
 <main class="page">
 	<header class="intro">
 		<h1 class="sr-only">Naim Chayata</h1>
-		<p class="bio">
-			<span class="lead">
+		<div class="bio">
+			<p class="lead">
 				{#each profile.bioLead as part (part.text)}
 					{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}
 				{/each}
-			</span>
-			<span class="rest">
+			</p>
+			<p class="rest">
 				{#each profile.bioRest as part (part.text)}
 					{#if part.bold}<strong>{part.text}</strong>{:else}{part.text}{/if}
 				{/each}
-			</span>
-		</p>
+			</p>
+		</div>
 
 		<div class="actions">
 			<MagneticPill
@@ -95,7 +95,7 @@
 				<li>
 					<span class="role-main">
 						<span class="role-title">{role.title}</span>
-						<span class="role-at"> at </span>
+						<span class="role-at"> @ </span>
 						<span class="role-company">{role.company}</span>
 					</span>
 					<span class="role-dates">{role.dates}</span>
@@ -202,9 +202,14 @@
 	}
 
 	.bio {
-		margin: 0;
-		font-size: clamp(1.05rem, 1.7vw, 1.2rem);
+		display: grid;
+		gap: 1em;
+		font-size: 24px;
 		line-height: 1.55;
+	}
+
+	.bio p {
+		margin: 0;
 	}
 
 	.lead {
@@ -218,10 +223,6 @@
 	.rest {
 		color: var(--color-text);
 		opacity: 0.4;
-	}
-
-	.rest::before {
-		content: ' ';
 	}
 
 	.rest strong {
@@ -321,27 +322,34 @@
 
 	.role-list li {
 		display: grid;
-		gap: 0.25rem;
+		gap: 0.35rem;
 	}
 
 	.role-main {
-		font-size: 1.05rem;
+		font-size: 15px;
+		font-weight: var(--font-weight, 500);
 		line-height: 1.35;
+		color: var(--color-text);
 	}
 
 	.role-title,
 	.role-company {
-		font-weight: var(--font-weight);
+		color: var(--color-text);
+		font-weight: var(--font-weight, 500);
 	}
 
 	.role-at {
-		color: var(--color-muted);
-		font-weight: var(--font-weight);
+		color: var(--color-text);
+		opacity: 0.4;
+		font-weight: var(--font-weight, 500);
 	}
 
 	.role-dates {
-		color: var(--color-muted);
-		font-size: 0.9rem;
+		color: var(--color-text);
+		opacity: 0.4;
+		font-size: 15px;
+		font-weight: var(--font-weight, 500);
+		line-height: 1.35;
 	}
 
 	.testimonial-list {
@@ -453,6 +461,20 @@
 	}
 
 	@media (max-width: 800px) {
+		.page {
+			width: 100%;
+			padding: 0 var(--page-pad) clamp(3rem, 12vw, 5rem);
+		}
+
+		.intro {
+			margin: var(--page-title-space) 0 4rem;
+			max-width: none;
+		}
+
+		.section + .section {
+			margin-top: 4.5rem;
+		}
+
 		.showcase {
 			width: 100%;
 			grid-template-columns: 1fr;

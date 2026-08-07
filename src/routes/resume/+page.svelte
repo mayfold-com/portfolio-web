@@ -14,12 +14,12 @@
 		<ul class="roles">
 			{#each roles as role (`${role.title}-${role.company}-${role.dates}`)}
 				<li>
-					<span class="dates">{role.dates}</span>
 					<p class="headline">
 						<span class="role">{role.title}</span>
-						<span class="at"> at </span>
+						<span class="at"> @ </span>
 						<span class="company">{role.company}</span>
 					</p>
+					<span class="dates">{role.dates}</span>
 					<p class="item-description">{role.description}</p>
 					{#if role.cards}
 						<div class="cards" aria-hidden="true">
@@ -80,40 +80,42 @@
 		margin-top: 2.75rem;
 	}
 
-	.dates {
-		display: block;
-		margin: 0 0 0.35rem;
-		color: var(--color-text);
-		opacity: 0.4;
-		font-size: 1rem;
-		font-weight: var(--font-weight, 500);
-		line-height: 1.35;
-	}
-
 	.headline {
 		margin: 0;
-		font-size: 20px;
+		font-size: 15px;
 		font-weight: var(--font-weight, 500);
 		line-height: 1.35;
 		color: var(--color-text);
 	}
 
-	.role {
+	.role,
+	.company {
 		color: var(--color-text);
 	}
 
-	.at,
-	.item-description {
+	.at {
 		color: var(--color-text);
 		opacity: 0.4;
 	}
 
-	.item-description {
+	.dates {
+		display: block;
 		margin: 0.35rem 0 0;
-		max-width: 100%;
-		font-size: 20px;
+		color: var(--color-text);
+		opacity: 0.4;
+		font-size: 15px;
 		font-weight: var(--font-weight, 500);
-		line-height: 1.45;
+		line-height: 1.35;
+	}
+
+	.item-description {
+		margin: 0.5rem 0 0;
+		max-width: 100%;
+		font-size: 15px;
+		font-weight: var(--font-weight, 500);
+		line-height: 1.55;
+		color: var(--color-text);
+		opacity: 0.45;
 	}
 
 	.cards {

@@ -299,13 +299,13 @@
 	}
 
 	.card-name {
-		font-size: 0.92rem;
+		font-size: 15px;
 		font-weight: var(--font-weight);
 		line-height: 1.45;
 	}
 
 	.card-desc {
-		font-size: 0.92rem;
+		font-size: 15px;
 		line-height: 1.45;
 		color: var(--color-text);
 		opacity: 0.4;
