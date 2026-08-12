@@ -2,7 +2,7 @@ export const profile = {
 	name: 'Naim Chayata',
 	location: 'Utrecht, The Netherlands',
 	/** Two-line hero. Soft break is intentional. */
-	title: 'Hi. I’m Naim, a designer\nwho loves to code',
+	title: 'Hi. I’m Naim, a designer\nwho loves to build',
 	subline:
 		'I build products from Utrecht. Right now that is Mayfold, helping fashion brands make photos that don’t look generated. Before that I spent almost seven years at Adyen, last as UX Manager.',
 	email: null as string | null,

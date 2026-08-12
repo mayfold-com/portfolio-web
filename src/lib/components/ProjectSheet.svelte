@@ -4,7 +4,8 @@
 	import { untrack } from 'svelte';
 	import { getWorkProject } from '$lib/data';
 	import {
-		activeMotionPresetId,
+		activeMotion,
+		defaultCloseEaseId,
 		defaultMotionPresetId,
 		getMotionPreset,
 		type MotionPreset
@@ -46,7 +47,7 @@
 	let videoReady = $state(false);
 	/** True while layout width/height is animating — video often paints black then. */
 	let morphing = $state(false);
-	let motion = $state<MotionPreset>(getMotionPreset(defaultMotionPresetId));
+	let motion = $state<MotionPreset>(getMotionPreset(defaultMotionPresetId, defaultCloseEaseId));
 	let sheetH = $state(0);
 
 	let backdropEl: HTMLDivElement | undefined = $state();
@@ -62,6 +63,8 @@
 	let openFrame = 0;
 	let closeFrame = 0;
 	let coverFrame = 0;
+	/** WAAPI morph for open/close chrome — respects close-curve picker. */
+	let chromeAnim: Animation | undefined;
 	let closeTimer: ReturnType<typeof setTimeout> | undefined;
 	let contentTimer: ReturnType<typeof setTimeout> | undefined;
 	let settleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -71,8 +74,20 @@
 	let pendingHistoryPop = false;
 	/** True once dismiss committed — blocks further overscroll / re-entrant close(). */
 	let closeRequested = false;
+	/** Escape/backdrop is scrolling to top before close — second trigger skips ahead. */
+	let escapeScrollPending = false;
+	let escapeScrollTimer: ReturnType<typeof setTimeout> | undefined;
+	let escapeScrollCleanup: (() => void) | undefined;
+	/** Eat residual trackpad inertia after unmount so the page doesn't keep scrolling. */
+	let pageScrollLockTimer: ReturnType<typeof setTimeout> | undefined;
+	let pageScrollLockCleanup: (() => void) | undefined;
 	/** Element that opened the sheet — restore focus on close. */
 	let restoreFocusEl: HTMLElement | null = null;
+	/** “Scroll up or press esc” — hides on first wheel / scroll. */
+	let hintVisible = $state(false);
+	/** Custom overlay scrollbar (macOS hides native ones). */
+	let scrollThumb = $state({ top: 0, height: 0, visible: false });
+	let thumbDragging = $state(false);
 
 	/** 0–1 ring fill (non-reactive — gesture paints without re-rendering). */
 	let ringProgress = 0;
@@ -204,7 +219,7 @@
 		sheetH = rect.height;
 	}
 
-	/** Two-state layout chrome — no scale(). */
+	/** Two-state layout chrome — no scale(). Uses WAAPI so close-curve easing actually applies. */
 	function applyChrome(
 		el: HTMLElement,
 		rect: Rect,
@@ -214,22 +229,61 @@
 		const duration = opts?.duration ?? motion.openDuration;
 		const ease = opts?.ease ?? motion.openEase;
 		const r = withPxRadius(rect);
-		el.style.willChange = animate ? 'top, left, width, height, border-radius' : 'auto';
-		el.style.transition = animate
-			? [
-					`top ${duration}ms ${ease}`,
-					`left ${duration}ms ${ease}`,
-					`width ${duration}ms ${ease}`,
-					`height ${duration}ms ${ease}`,
-					`border-radius ${duration}ms ${ease}`
-				].join(', ')
-			: 'none';
-		el.style.top = `${r.top}px`;
-		el.style.left = `${r.left}px`;
-		el.style.width = `${r.width}px`;
-		el.style.height = `${r.height}px`;
-		el.style.borderRadius = r.radius;
+		const next = {
+			top: `${r.top}px`,
+			left: `${r.left}px`,
+			width: `${r.width}px`,
+			height: `${r.height}px`,
+			borderRadius: r.radius
+		};
+
+		chromeAnim?.cancel();
+		chromeAnim = undefined;
+		el.style.transition = 'none';
 		el.style.transform = 'none';
+
+		if (!animate || reduceMotion || duration <= 0) {
+			el.style.willChange = 'auto';
+			el.style.top = next.top;
+			el.style.left = next.left;
+			el.style.width = next.width;
+			el.style.height = next.height;
+			el.style.borderRadius = next.borderRadius;
+			return;
+		}
+
+		const cs = getComputedStyle(el);
+		const prev = {
+			top: el.style.top || cs.top,
+			left: el.style.left || cs.left,
+			width: el.style.width || cs.width,
+			height: el.style.height || cs.height,
+			borderRadius: el.style.borderRadius || cs.borderRadius
+		};
+
+		el.style.willChange = 'top, left, width, height, border-radius';
+		const anim = el.animate([prev, next], {
+			duration,
+			easing: ease,
+			fill: 'forwards'
+		});
+		chromeAnim = anim;
+
+		anim.finished
+			.then(() => {
+				if (chromeAnim !== anim) return;
+				el.style.top = next.top;
+				el.style.left = next.left;
+				el.style.width = next.width;
+				el.style.height = next.height;
+				el.style.borderRadius = next.borderRadius;
+				el.style.willChange = 'auto';
+				anim.cancel();
+				chromeAnim = undefined;
+			})
+			.catch(() => {
+				/* cancelled mid-flight */
+			});
 	}
 
 	function paintRing(progress: number) {
@@ -325,6 +379,8 @@
 		clearPullSamples();
 		paintRing(0);
 		if (phase === 'dismissing') phase = 'open';
+		// Bring the close hint back when pull-to-dismiss is cancelled.
+		if (contentVisible && !closeRequested) hintVisible = true;
 		if (cardEl && expanded) {
 			const open = openRect ?? finalRect();
 			applyChrome(cardEl, open, !reduceMotion, {
@@ -365,30 +421,117 @@
 		clearDismiss();
 	}
 
-	/** Trackpad / wheel: past-top overscroll drives the ring; content scroll is untouched. */
+	function hideCloseHint() {
+		if (hintVisible) hintVisible = false;
+	}
+
+	const SCROLL_TRACK_PAD = 28;
+	const SCROLL_THUMB_MIN = 36;
+
+	function updateScrollThumb() {
+		if (!scrollerEl) {
+			scrollThumb = { top: 0, height: 0, visible: false };
+			return;
+		}
+		const { scrollTop, scrollHeight, clientHeight } = scrollerEl;
+		const overflow = scrollHeight - clientHeight;
+		if (overflow <= 1 || clientHeight <= 0) {
+			scrollThumb = { top: 0, height: 0, visible: false };
+			return;
+		}
+		const trackH = Math.max(0, clientHeight - SCROLL_TRACK_PAD * 2);
+		const height = Math.min(trackH, Math.max(SCROLL_THUMB_MIN, trackH * (clientHeight / scrollHeight)));
+		// Rail is already inset; thumb top is relative to the rail.
+		const top = (trackH - height) * (scrollTop / overflow);
+		scrollThumb = { top, height, visible: true };
+	}
+
+	function onThumbPointerDown(event: PointerEvent) {
+		if (!scrollerEl || !scrollThumb.visible) return;
+		event.preventDefault();
+		event.stopPropagation();
+
+		const thumb = event.currentTarget as HTMLElement;
+		const startY = event.clientY;
+		const startScroll = scrollerEl.scrollTop;
+		const overflow = scrollerEl.scrollHeight - scrollerEl.clientHeight;
+		const trackH = Math.max(0, scrollerEl.clientHeight - SCROLL_TRACK_PAD * 2);
+		const travel = Math.max(1, trackH - scrollThumb.height);
+
+		thumbDragging = true;
+		thumb.setPointerCapture(event.pointerId);
+
+		const onMove = (moveEvent: PointerEvent) => {
+			if (!scrollerEl) return;
+			const delta = ((moveEvent.clientY - startY) / travel) * overflow;
+			scrollerEl.scrollTop = Math.min(overflow, Math.max(0, startScroll + delta));
+			updateScrollThumb();
+		};
+
+		const onUp = () => {
+			thumbDragging = false;
+			thumb.releasePointerCapture(event.pointerId);
+			thumb.removeEventListener('pointermove', onMove);
+			thumb.removeEventListener('pointerup', onUp);
+			thumb.removeEventListener('pointercancel', onUp);
+		};
+
+		thumb.addEventListener('pointermove', onMove);
+		thumb.addEventListener('pointerup', onUp);
+		thumb.addEventListener('pointercancel', onUp);
+	}
+
+	function wheelDeltaY(event: WheelEvent) {
+		if (event.deltaMode === 1) return event.deltaY * 16;
+		if (event.deltaMode === 2) return event.deltaY * (scrollerEl?.clientHeight ?? 800);
+		return event.deltaY;
+	}
+
+	/** Trackpad / wheel: dismiss from anywhere; content scroll works over the backdrop too. */
 	function onWheel(event: WheelEvent) {
-		if (!canDismiss || reduceMotion || closeRequested || phase === 'closing') return;
+		if (!scrollerEl) return;
+
+		// Close committed — eat residual trackpad/wheel so the hero can't drift mid-morph.
+		if (closeRequested || phase === 'closing' || morphing) {
+			event.preventDefault();
+			if (scrollerEl.scrollTop !== 0) scrollerEl.scrollTop = 0;
+			return;
+		}
+
+		if (!canDismiss) return;
+
+		const deltaY = wheelDeltaY(event);
 
 		// Past the top → fill ring (deltaY < 0).
-		if (atScrollTop() && event.deltaY < 0) {
+		if (!reduceMotion && atScrollTop() && deltaY < 0) {
+			hideCloseHint();
 			event.preventDefault();
 			if (rawPull >= PULL_RANGE) {
 				close();
 				return;
 			}
-			paintDismiss(rawPull + -event.deltaY);
+			paintDismiss(rawPull + -deltaY);
 			scheduleSettle();
 			return;
 		}
 
 		// While armed, scroll-down releases the ring before content moves.
-		if (rawPull > 0 && event.deltaY > 0) {
+		if (!reduceMotion && rawPull > 0 && deltaY > 0) {
 			event.preventDefault();
-			const next = rawPull - event.deltaY;
+			const next = rawPull - deltaY;
 			if (next <= DEAD_ZONE) clearDismiss();
 			else paintDismiss(next);
 			scheduleSettle();
+			return;
 		}
+
+		// Cursor over the sheet → native scrolling. Outside → drive the scroller.
+		if (scrollerEl.contains(event.target as Node)) return;
+
+		event.preventDefault();
+		const maxScroll = Math.max(0, scrollerEl.scrollHeight - scrollerEl.clientHeight);
+		scrollerEl.scrollTop = Math.min(maxScroll, Math.max(0, scrollerEl.scrollTop + deltaY));
+		updateScrollThumb();
 	}
 
 	function onTouchStart(event: TouchEvent) {
@@ -400,12 +543,19 @@
 	}
 
 	function onTouchMove(event: TouchEvent) {
-		if (!touchActive || !canDismiss || reduceMotion || closeRequested) return;
+		if (!touchActive || reduceMotion) return;
+		if (closeRequested || phase === 'closing') {
+			if (event.cancelable) event.preventDefault();
+			if (scrollerEl && scrollerEl.scrollTop !== 0) scrollerEl.scrollTop = 0;
+			return;
+		}
+		if (!canDismiss) return;
 		const y = event.touches[0]?.clientY ?? touchLastY;
 		const dy = y - touchLastY; // >0 finger down → pull to dismiss at top
 		touchLastY = y;
 
 		if (atScrollTop() && dy > 0) {
+			hideCloseHint();
 			if (event.cancelable) event.preventDefault();
 			if (rawPull >= PULL_RANGE) {
 				close();
@@ -466,8 +616,11 @@
 		const from = currentCardRect();
 		const thumb = thumbRect();
 		const duration = motion.closeDuration;
+		const ease = motion.closeEase;
 
 		phase = 'closing';
+		// Drop expanded now so the shade fades with the morph (not on unmount).
+		expanded = false;
 		morphing = true;
 		if (scrollerEl) scrollerEl.scrollTop = 0;
 		prepareHero();
@@ -483,7 +636,7 @@
 				}
 				applyChrome(cardEl, thumb, true, {
 					duration,
-					ease: motion.closeEase
+					ease
 				});
 
 				const started = performance.now();
@@ -502,10 +655,101 @@
 		});
 	}
 
+	function clearEscapeScroll() {
+		escapeScrollPending = false;
+		clearTimeout(escapeScrollTimer);
+		escapeScrollTimer = undefined;
+		escapeScrollCleanup?.();
+		escapeScrollCleanup = undefined;
+	}
+
+	/**
+	 * Escape / backdrop: scroll to top first (when needed), then run the close morph.
+	 * A second trigger while scrolling jumps to top and closes immediately.
+	 *
+	 * Uses a short eased scrub (not browser `scroll-behavior: smooth`) so the
+	 * lead-in matches Snap close instead of a ~0.5–1s browser glide.
+	 */
+	function dismissWithScrollFirst() {
+		if (phase === 'closing' || closeRequested) return;
+
+		if (escapeScrollPending) {
+			clearEscapeScroll();
+			if (scrollerEl) scrollerEl.scrollTop = 0;
+			close();
+			return;
+		}
+
+		if (!scrollerEl || atScrollTop()) {
+			close();
+			return;
+		}
+
+		if (reduceMotion) {
+			scrollerEl.scrollTop = 0;
+			close();
+			return;
+		}
+
+		const scroller = scrollerEl;
+		const from = scroller.scrollTop;
+		escapeScrollPending = true;
+		hideCloseHint();
+
+		// Kill trackpad inertia so it can't fight the programmatic scrub.
+		scroller.scrollTo({ top: from, behavior: 'auto' });
+
+		const finish = () => {
+			if (!escapeScrollPending) return;
+			clearEscapeScroll();
+			scroller.scrollTop = 0;
+			close();
+		};
+
+		// Short distance — snap straight to top.
+		if (from < 120) {
+			finish();
+			return;
+		}
+
+		// Keep the lead-in in the same tempo as the close morph.
+		const duration = Math.min(240, Math.max(motion.closeDuration, 90 + from * 0.08));
+		const started = performance.now();
+		let frame = 0;
+
+		const tick = (now: number) => {
+			if (!escapeScrollPending) return;
+			const t = Math.min(1, (now - started) / duration);
+			// Soft-land style ease-out — fast start, gentle arrive at top.
+			const eased = 1 - (1 - t) ** 3;
+			scroller.scrollTop = from * (1 - eased);
+			if (t < 1) {
+				frame = requestAnimationFrame(tick);
+				return;
+			}
+			finish();
+		};
+
+		escapeScrollCleanup = () => {
+			cancelAnimationFrame(frame);
+		};
+
+		escapeScrollTimer = setTimeout(() => {
+			if (!escapeScrollPending) return;
+			scroller.scrollTop = 0;
+			finish();
+		}, duration + 80);
+
+		frame = requestAnimationFrame(tick);
+	}
+
 	function close() {
 		if (phase === 'closing' || closeRequested) return;
+		clearEscapeScroll();
 		closeRequested = true;
 		rawPull = Math.min(rawPull, PULL_RANGE);
+		// Freeze scroll immediately — wheel handlers still run until the morph starts.
+		if (scrollerEl) scrollerEl.scrollTop = 0;
 
 		const epoch = ++closeEpoch;
 		// Pop / strip `?project=` for UI + scroll dismiss — browser Back already cleared state.
@@ -540,17 +784,67 @@
 		beginClose(epoch);
 	}
 
+	/**
+	 * After the sheet unmounts, macOS trackpad inertia still emits wheel events.
+	 * Those were preventDefault'd while open — once the listener is gone they
+	 * scroll the page (usually upward, from scroll-to-dismiss). Pin briefly.
+	 */
+	function lockPageScrollBriefly(ms = 480) {
+		if (!browser) return;
+		pageScrollLockCleanup?.();
+		clearTimeout(pageScrollLockTimer);
+
+		const x = window.scrollX;
+		const y = window.scrollY;
+		const wheelOpts: AddEventListenerOptions = { passive: false, capture: true };
+		const scrollOpts: AddEventListenerOptions = { capture: true, passive: true };
+
+		const blockWheel = (event: WheelEvent) => {
+			event.preventDefault();
+		};
+		const blockTouch = (event: TouchEvent) => {
+			if (event.cancelable) event.preventDefault();
+		};
+		const pinScroll = () => {
+			if (window.scrollX !== x || window.scrollY !== y) {
+				window.scrollTo(x, y);
+			}
+		};
+
+		window.addEventListener('wheel', blockWheel, wheelOpts);
+		window.addEventListener('touchmove', blockTouch, wheelOpts);
+		window.addEventListener('scroll', pinScroll, scrollOpts);
+
+		pageScrollLockCleanup = () => {
+			window.removeEventListener('wheel', blockWheel, wheelOpts);
+			window.removeEventListener('touchmove', blockTouch, wheelOpts);
+			window.removeEventListener('scroll', pinScroll, scrollOpts);
+			pageScrollLockCleanup = undefined;
+		};
+
+		pageScrollLockTimer = setTimeout(() => {
+			pageScrollLockCleanup?.();
+		}, ms);
+	}
+
 	function finishClose(epoch = closeEpoch) {
 		if (epoch !== closeEpoch) return;
 
 		cancelAnimationFrame(closeFrame);
+		chromeAnim?.cancel();
+		chromeAnim = undefined;
 		stopCoverPaint();
+		// Capture before body overflow unlock / history.back can shift the page.
+		lockPageScrollBriefly();
 		// Return the borrowed video to the card BEFORE unlifting / unmounting.
 		returnVideo();
 		videoEl = undefined;
 		rendered = false;
 		expanded = false;
 		contentVisible = false;
+		hintVisible = false;
+		scrollThumb = { top: 0, height: 0, visible: false };
+		thumbDragging = false;
 		morphing = false;
 		phase = 'opening';
 		rawPull = 0;
@@ -563,6 +857,7 @@
 		id = null;
 		origin = null;
 		closeRequested = false;
+		clearEscapeScroll();
 		const shouldPop = pendingHistoryPop;
 		pendingHistoryPop = false;
 		const focusEl = restoreFocusEl;
@@ -574,7 +869,7 @@
 	}
 
 	function onBackdropClick(event: MouseEvent) {
-		if (event.target === event.currentTarget && canDismiss) close();
+		if (event.target === event.currentTarget && canDismiss) dismissWithScrollFirst();
 	}
 
 	function isTypingTarget(target: EventTarget | null) {
@@ -612,11 +907,12 @@
 		if (!rendered) return;
 
 		if (event.key === 'Escape' && canDismiss) {
-			close();
+			event.preventDefault();
+			dismissWithScrollFirst();
 			return;
 		}
 
-		if (!canDismiss || !scrollerEl || morphing || closeRequested) return;
+		if (!canDismiss || !scrollerEl || morphing || closeRequested || escapeScrollPending) return;
 		if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
 		if (isTypingTarget(event.target)) return;
 
@@ -662,6 +958,7 @@
 		openRect = finalRect();
 		sheetH = openRect.height;
 		applyChrome(cardEl, openRect, false);
+		updateScrollThumb();
 	}
 
 	// Shallow history: SvelteKit stores the case in `page.state` (Back/Forward).
@@ -701,8 +998,8 @@
 	});
 
 	$effect(() => {
-		const unsubMotion = activeMotionPresetId.subscribe((value) => {
-			motion = getMotionPreset(value);
+		const unsubMotion = activeMotion.subscribe((value) => {
+			motion = value;
 		});
 		const unsubId = openProjectId.subscribe((value) => {
 			clearTimeout(closeTimer);
@@ -796,8 +1093,10 @@
 		const revealContent = () => {
 			if (phase !== 'open') return;
 			contentVisible = true;
+			hintVisible = true;
 			if (scrollerEl) scrollerEl.scrollTop = 0;
 			focusScroller();
+			requestAnimationFrame(updateScrollThumb);
 			if (videoEl) void videoEl.play().catch(() => {});
 		};
 
@@ -852,21 +1151,56 @@
 	});
 
 	$effect(() => {
-		if (!browser || !expanded || !canDismiss || !scrollerEl || reduceMotion) return;
+		if (!browser || !expanded || !canDismiss || !scrollerEl) return;
 
 		const scroller = scrollerEl;
 		const passive: AddEventListenerOptions = { passive: true };
-		const wheelOpts: AddEventListenerOptions = { passive: false };
-		const touchMoveOpts: AddEventListenerOptions = { passive: false };
+		const onScroll = () => updateScrollThumb();
 
-		scroller.addEventListener('wheel', onWheel, wheelOpts);
-		scroller.addEventListener('touchstart', onTouchStart, passive);
-		scroller.addEventListener('touchmove', onTouchMove, touchMoveOpts);
-		scroller.addEventListener('touchend', onTouchEnd, passive);
-		scroller.addEventListener('touchcancel', onTouchEnd, passive);
+		scroller.addEventListener('scroll', onScroll, passive);
+		updateScrollThumb();
+
+		const ro =
+			typeof ResizeObserver !== 'undefined'
+				? new ResizeObserver(() => updateScrollThumb())
+				: null;
+		ro?.observe(scroller);
 
 		return () => {
-			scroller.removeEventListener('wheel', onWheel, wheelOpts);
+			scroller.removeEventListener('scroll', onScroll, passive);
+			ro?.disconnect();
+		};
+	});
+
+	$effect(() => {
+		if (!browser || !scrollerEl || !rendered) return;
+		// Keep listening through the close morph so residual wheel input stays blocked.
+		if (phase !== 'closing' && (!expanded || !canDismiss)) return;
+
+		const scroller = scrollerEl;
+		const passive: AddEventListenerOptions = { passive: true };
+		// Window-level wheel: dismiss + scroll content even over the backdrop.
+		const wheelOpts: AddEventListenerOptions = { passive: false, capture: true };
+		const touchMoveOpts: AddEventListenerOptions = { passive: false };
+		const lockScroll = () => {
+			if ((closeRequested || phase === 'closing') && scroller.scrollTop !== 0) {
+				scroller.scrollTop = 0;
+			}
+		};
+
+		window.addEventListener('wheel', onWheel, wheelOpts);
+		scroller.addEventListener('scroll', lockScroll, passive);
+
+		if (!reduceMotion && phase !== 'closing') {
+			scroller.addEventListener('touchstart', onTouchStart, passive);
+			scroller.addEventListener('touchmove', onTouchMove, touchMoveOpts);
+			scroller.addEventListener('touchend', onTouchEnd, passive);
+			scroller.addEventListener('touchcancel', onTouchEnd, passive);
+		}
+
+		return () => {
+			window.removeEventListener('wheel', onWheel, wheelOpts);
+			scroller.removeEventListener('scroll', lockScroll, passive);
 			scroller.removeEventListener('touchstart', onTouchStart, passive);
 			scroller.removeEventListener('touchmove', onTouchMove, touchMoveOpts);
 			scroller.removeEventListener('touchend', onTouchEnd, passive);
@@ -909,6 +1243,23 @@
 				</svg>
 			</div>
 
+			<div
+				class="scroll-rail"
+				class:visible={scrollThumb.visible && contentVisible && !isClosing && !morphing && !isDismissing}
+				aria-hidden="true"
+			>
+				<button
+					type="button"
+					class="scroll-thumb"
+					class:dragging={thumbDragging}
+					tabindex="-1"
+					style:transform="translate3d(0, {scrollThumb.top}px, 0)"
+					style:height="{scrollThumb.height}px"
+					aria-label="Scroll case study"
+					onpointerdown={onThumbPointerDown}
+				></button>
+			</div>
+
 			<div class="scroller" bind:this={scrollerEl} tabindex="-1">
 				<!-- Hero is in normal flow so it scrolls away with the case study. -->
 				<section class="stage">
@@ -932,6 +1283,14 @@
 							></div>
 						{/if}
 					</div>
+
+					<p
+						class="close-hint"
+						class:visible={hintVisible && contentVisible && canDismiss}
+						aria-hidden={!(hintVisible && contentVisible && canDismiss)}
+					>
+						Scroll up or press <kbd>esc</kbd> to close
+					</p>
 
 					<div class="caption">
 						<div class="caption-inner">
@@ -1060,7 +1419,8 @@
 		inset: 0;
 		z-index: 1;
 		overflow: hidden;
-		overscroll-behavior-y: none;
+		/* contain: keep rubber-band at the ends without chaining to the page behind. */
+		overscroll-behavior-y: contain;
 		outline: none;
 	}
 
@@ -1070,6 +1430,59 @@
 		-webkit-overflow-scrolling: touch;
 		overflow-anchor: none;
 		touch-action: pan-y;
+		/* Native bars are overlay/hidden on macOS — we draw our own. */
+		scrollbar-width: none;
+	}
+
+	.card.expanded:not(.morphing):not(.closing) .scroller::-webkit-scrollbar {
+		display: none;
+		width: 0;
+		height: 0;
+	}
+
+	.scroll-rail {
+		position: absolute;
+		top: 28px;
+		right: 12px;
+		bottom: 28px;
+		z-index: 9;
+		width: 4px;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 220ms ease;
+	}
+
+	.scroll-rail.visible {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.scroll-thumb {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 4px;
+		padding: 0;
+		border: 0;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-text) 55%, transparent);
+		cursor: grab;
+		touch-action: none;
+		transition: background-color 180ms ease;
+	}
+
+	.scroll-thumb:hover,
+	.scroll-thumb.dragging {
+		background: color-mix(in srgb, var(--color-text) 75%, transparent);
+	}
+
+	.scroll-thumb.dragging {
+		cursor: grabbing;
+	}
+
+	.card.closing .scroll-rail {
+		opacity: 0 !important;
+		pointer-events: none !important;
 	}
 
 	/* Hero block — one viewport tall, then scrolls away with the case study. */
@@ -1085,10 +1498,73 @@
 
 	.card.closing .details,
 	.card.closing .caption,
-	.card.closing .dismiss-ring {
+	.card.closing .dismiss-ring,
+	.card.closing .close-hint {
 		opacity: 0 !important;
 		pointer-events: none !important;
 		visibility: hidden;
+	}
+
+	/* Lives in .stage so it scrolls away with the hero — not sticky to the sheet. */
+	.close-hint {
+		position: absolute;
+		top: 28px;
+		left: 50%;
+		z-index: 3;
+		margin: 0;
+		padding: 0 1rem;
+		width: max-content;
+		max-width: calc(100% - 2rem);
+		transform: translate(-50%, 6px);
+		font-size: 13px;
+		font-weight: var(--font-weight, 500);
+		line-height: 1.35;
+		letter-spacing: 0.01em;
+		color: rgb(255 255 255 / 0.6);
+		text-align: center;
+		opacity: 0;
+		pointer-events: none;
+		transition:
+			opacity 280ms cubic-bezier(0.22, 1, 0.36, 1),
+			transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.close-hint.visible {
+		opacity: 1;
+		transform: translate(-50%, 0);
+		color: transparent;
+		background-image: linear-gradient(
+			100deg,
+			rgb(255 255 255 / 0.6) 0%,
+			rgb(255 255 255 / 0.6) 40%,
+			rgb(255 255 255 / 1) 50%,
+			rgb(255 255 255 / 0.6) 60%,
+			rgb(255 255 255 / 0.6) 100%
+		);
+		background-size: 220% 100%;
+		background-position: 100% center;
+		background-clip: text;
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		animation: close-hint-shimmer 3s ease-in-out infinite;
+	}
+
+	.close-hint kbd {
+		font: inherit;
+		font-weight: inherit;
+		color: #fff;
+		-webkit-text-fill-color: #fff;
+	}
+
+	@keyframes close-hint-shimmer {
+		0%,
+		25% {
+			background-position: 100% center;
+		}
+		70%,
+		100% {
+			background-position: 0% center;
+		}
 	}
 
 	.hero {
@@ -1425,8 +1901,16 @@
 		.card,
 		.caption,
 		.details,
-		.dismiss-ring {
+		.dismiss-ring,
+		.close-hint {
 			transition: none !important;
+			animation: none !important;
+		}
+
+		.close-hint.visible {
+			color: rgb(255 255 255 / 0.6);
+			background-image: none;
+			-webkit-text-fill-color: unset;
 		}
 
 		.hero-video-mount {

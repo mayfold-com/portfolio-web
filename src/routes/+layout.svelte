@@ -13,7 +13,6 @@
 		fontshareStylesheetHref,
 		fontsStylesheetHref
 	} from '$lib/fonts';
-	import { defaultMotionPresetId, setMotionPreset } from '$lib/projectMotion';
 	import { preparePageTransition } from '$lib/transitions';
 	import '../app.css';
 	import '$lib/local-fonts.css';
@@ -26,7 +25,6 @@
 		if (!browser) return;
 		applyFont(defaultFontId);
 		applyFontWeight(defaultFontWeight);
-		setMotionPreset(defaultMotionPresetId);
 	});
 </script>
 
