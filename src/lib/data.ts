@@ -24,20 +24,43 @@ export type CaseFigureRatio = 'wide' | 'square' | 'tall' | 'ultrawide';
 export type CaseStudyBlock =
 	| { type: 'heading'; text: string }
 	| { type: 'paragraph'; text: string }
-	| { type: 'figure'; ratio?: CaseFigureRatio; caption?: string }
-	| { type: 'figures'; ratio?: CaseFigureRatio; count: 2 | 3; captions?: string[] };
+	| {
+			type: 'figure';
+			ratio?: CaseFigureRatio;
+			caption?: string;
+			src?: string;
+			/** Backdrop behind the image (thumb + figure viewer). */
+			background?: string;
+			/** Pad the image on the thumbnail backdrop with an 8px radius. */
+			framed?: boolean;
+			/** Full-res peek: pad top/left, clip bottom/right. */
+			peek?: boolean;
+			/** Start cropped at the bottom, then expand when scrolled into view. */
+			expand?: boolean;
+	  }
+	| {
+			type: 'figures';
+			ratio?: CaseFigureRatio;
+			count: 2 | 3;
+			captions?: string[];
+			srcs?: string[];
+			backgrounds?: string[];
+			framed?: boolean | boolean[];
+			/** Full-res peek per figure: pad top/left, clip bottom/right. */
+			peek?: boolean | boolean[];
+	  };
 
 export type WorkProject = {
 	id: string;
 	title: string;
 	meta: string;
 	description: string;
-	/** Headline over the full-bleed media (e.g. "Founder at Mayfold") */
-	overlayHeadline?: string;
 	/** Longer copy shown in the project sheet */
 	body: string[];
 	/** Optional long-form case study blocks (headings, copy, grey figures). */
 	caseStudy?: CaseStudyBlock[];
+	/** Sheet shows a short “coming soon” state instead of a full case study. */
+	comingSoon?: boolean;
 	services: string;
 	year: string;
 	role?: string;
@@ -58,126 +81,117 @@ export const workProjects: WorkProject[] = [
 	{
 		id: 'adyen',
 		title: 'Adyen',
-		meta: 'Design & product leadership — 2018–2025',
+		meta: 'Merchant platform — 2018–2025',
 		description:
-			'Almost seven years on the merchant product — design system, Customer Area, then team lead and management as the platform grew across markets.',
+			'Almost seven years at Adyen. I touched almost all areas of our merchant-facing products and most of our internal tooling.',
 		body: [
-			'Almost seven years on Adyen’s merchant-facing product — from design system and platform shell through Customer Area leadership and UX management.',
-			'A lot of the work was keeping the experience coherent while the product and team scaled across markets.'
+			'Almost seven years at Adyen.',
+			'I touched almost all areas of our merchant-facing products and most of our internal tooling.'
 		],
 		caseStudy: [
 			{
-				type: 'heading',
-				text: 'The brief in one line'
+				type: 'paragraph',
+				text: 'I spent almost seven years at Adyen on our merchant-facing products. I touched almost all of them, and most of our internal tooling. The thread through that time was structure: how teams built UI, how merchants moved through the product, and how pages stayed consistent as we grew.'
 			},
 			{
 				type: 'paragraph',
-				text: 'Adyen’s merchant products have to feel like one company even when dozens of teams ship into the same shell. Over nearly seven years I moved from foundations (design system, platform chrome) into Customer Area leadership and eventually UX management — always with the same constraint: coherence at scale.'
-			},
-			{
-				type: 'paragraph',
-				text: 'This case study is mock content to pressure-test a longer project format. The grey blocks stand in for product shots, flows, and system artifacts.'
-			},
-			{
-				type: 'figure',
-				ratio: 'ultrawide',
-				caption: 'Platform overview — placeholder'
+				text: 'The product grew faster than its structure. Teams shipped new pages every week. The top navigation filled up until it could not hold another item. Create flows often sat alone in the menu, away from their lists. Opening a record meant a side panel in one place, a modal in another, a full page or a new tab somewhere else. Merchants had to learn each area from scratch.'
 			},
 			{
 				type: 'heading',
-				text: 'Design system as infrastructure'
+				text: 'Design system'
 			},
 			{
 				type: 'paragraph',
-				text: 'The first years were about making the system real: components that teams would actually adopt, documentation that didn’t rot, and a platform shell (navigation, accounts, multi-account) sturdy enough to survive product growth.'
-			},
-			{
-				type: 'paragraph',
-				text: 'What mattered less was visual polish in isolation. What mattered more was which decisions aged well — tokens, composition patterns, and the boring rules that keep a global product from fracturing market by market.'
+				text: 'In my first week the design system was a Sketch sticker sheet and a CSS file. Almost no component states. I owned the move to Adyen’s first full design system, with docs next to it. The hard part was not the Figma file. It was making the shared path easier than building something custom.'
 			},
 			{
 				type: 'figures',
 				count: 2,
 				ratio: 'wide',
-				captions: ['Component inventory — placeholder', 'Shell navigation — placeholder']
+				captions: ['Component example in Figma', 'Design system docs'],
+				srcs: [
+					'/media/adyen-design-system-figma.png',
+					'/media/adyen-design-system-docs.png'
+				],
+				framed: [true, true],
+				peek: [false, true]
+			},
+			{
+				type: 'heading',
+				text: 'Navigation and structure'
+			},
+			{
+				type: 'paragraph',
+				text: 'We replaced the top bar with a vertical menu with groups. We rebuilt account data and multi-account flows, and we localized the product into French, German, Brazilian Portuguese, Japanese, and Chinese. The new navigation did not land in one release. Old pages stayed on old tech for years. We migrated them while the product kept shipping.'
 			},
 			{
 				type: 'figure',
 				ratio: 'wide',
-				caption: 'Token / theming exploration — placeholder'
-			},
-			{
-				type: 'heading',
-				text: 'Customer Area: the daily hub'
-			},
-			{
-				type: 'paragraph',
-				text: 'Later the work concentrated on Customer Area — where merchants live day to day. Search, multi-account, and the shared shell became the battleground: every feature team wanted a doorway, and someone had to keep the building upright.'
+				src: '/media/adyen-navigation-redesign.png',
+				framed: true,
+				peek: false,
+				caption: 'Navigation redesign'
 			},
 			{
 				type: 'paragraph',
-				text: 'Leading across design and engineering meant being specific about tradeoffs. Replacing search wasn’t a UI refresh; it was a bet on how merchants find things when the catalog of capabilities doubles.'
-			},
-			{
-				type: 'figure',
-				ratio: 'tall',
-				caption: 'Search & discovery flow — placeholder'
-			},
-			{
-				type: 'figures',
-				count: 3,
-				ratio: 'square',
-				captions: ['Account switcher', 'Empty states', 'Dense tables']
-			},
-			{
-				type: 'heading',
-				text: 'Leadership without losing the craft'
-			},
-			{
-				type: 'paragraph',
-				text: 'As UX Manager the job shifted: hiring, rituals, critique quality, and protecting focus for the people closest to the pixels. The craft didn’t disappear — it moved upstream into how we framed problems and reviewed work.'
-			},
-			{
-				type: 'paragraph',
-				text: 'A useful tension stayed constant: ship with the business, but don’t let short-term surfaces erase the system. Mock quote for layout: “If every squad invents its own navigation metaphor, merchants pay the tax.”'
+				text: 'No one had mapped the full product, so we drew the first UX sitemap. It showed duplicate paths, create flows with no list, and corners almost no one knew about. We used that map to shape the information architecture around objects: list, create, detail. Then we built global search for the cases where the menu was still not enough.'
 			},
 			{
 				type: 'figure',
 				ratio: 'wide',
-				caption: 'Team / process artifact — placeholder'
+				src: '/media/adyen-navigation-proposal.jpg',
+				framed: true,
+				peek: false,
+				caption: 'Navigation proposal'
 			},
 			{
 				type: 'figure',
 				ratio: 'ultrawide',
-				caption: 'Before / after composition — placeholder'
-			},
-			{
-				type: 'heading',
-				text: 'Outcomes (mock)'
-			},
-			{
-				type: 'paragraph',
-				text: 'Design system foundations still present in merchant surfaces years later. Customer Area search and multi-account patterns adopted across squads. A design org that could critique and ship without waiting on a single bottleneck.'
-			},
-			{
-				type: 'paragraph',
-				text: 'The longer lesson for this portfolio format: case studies need room for sequence — problem, system, product, people — not just a hero and three bullets.'
+				caption: 'UX sitemap'
 			},
 			{
 				type: 'figures',
 				count: 2,
-				ratio: 'tall',
-				captions: ['Mobile shell — placeholder', 'Desktop density — placeholder']
+				ratio: 'wide',
+				captions: ['Account data', 'Global search']
+			},
+			{
+				type: 'heading',
+				text: 'Leading the team'
+			},
+			{
+				type: 'paragraph',
+				text: 'As an engineering team lead I owned the navigation and search. Two product managers often needed the same engineers, so we split the team into two workstreams. We also shipped Essentials, the franchisee platform, for merchants who did not need the full product.'
+			},
+			{
+				type: 'paragraph',
+				text: 'As a UX manager I ran Project Boost: shared templates for list, create, and detail pages. The goal was simple. Stop a new layout for every object. I also led designers, writers, and researchers across Checkout, developer documentation, reporting, and reconciliation.'
+			},
+			{
+				type: 'figures',
+				count: 2,
+				ratio: 'wide',
+				captions: ['Boost templates', 'Franchisee platform']
+			},
+			{
+				type: 'figures',
+				count: 2,
+				ratio: 'wide',
+				captions: ['Checkout', 'Reporting']
+			},
+			{
+				type: 'paragraph',
+				text: 'What lasted was the structural work: a design system teams could use, navigation that could grow, a shared map of the product, search, and page templates. Everything else waited on migration.'
 			}
 		],
 		services: 'Product Design, Design Systems, Leadership',
 		year: '2018 – 2025',
-		overlayHeadline: 'UX leadership at Adyen',
-		role: 'UX Manager → Principal Designer',
+		role: 'Principal Designer, Design System Lead, Engineering Team Lead, UX Manager',
 		highlights: [
-			'Scaled design systems across merchant surfaces',
-			'Led Customer Area product experience',
-			'Grew and managed multidisciplinary teams'
+			'Design system, navigation, and search',
+			'Account data, localization, and internal tooling',
+			'Franchisee platform, Checkout, docs, and reporting'
 		],
 		link: { label: 'adyen.com', href: 'https://www.adyen.com' },
 		video: '/media/adyen.mp4?v=1080',
@@ -190,11 +204,11 @@ export const workProjects: WorkProject[] = [
 		meta: 'Online Travel Agency — website',
 		description:
 			'An online travel agency for browsing destinations, comparing stays, and booking trips without the usual booking-flow friction.',
-		overlayHeadline: 'Product design at Plekka',
 		body: [
 			'Plekka is an online travel agency website built around finding and booking trips with less friction — destinations, stays, and the path to checkout.',
 			'The work covered product design and the site experience: clear search, readable listings, and a booking flow that stays calm when the inventory gets dense.'
 		],
+		comingSoon: true,
 		services: 'Product Design, Brand, Engineering',
 		year: '2024',
 		role: 'Product & Design',
@@ -211,11 +225,11 @@ export const workProjects: WorkProject[] = [
 		meta: 'Founder — 2025–Present',
 		description:
 			'Building Mayfold, an AI photography tool for fashion brands. Most of the work is on control: same product, same pose, different outfits, without the usual AI tells.',
-		overlayHeadline: 'Founder at Mayfold',
 		body: [
 			'Mayfold is my personal product lab for AI-enabled products. The main thread is fashion photography that holds up next to real shoots — consistency, fabric, light — not one-off demos.',
 			'I use it to stay hands-on across product, design, and implementation, and to test ideas without waiting on a brief.'
 		],
+		comingSoon: true,
 		services: 'Product, Design, Engineering',
 		year: '2025 – Present',
 		role: 'Founder',
@@ -226,50 +240,6 @@ export const workProjects: WorkProject[] = [
 		],
 		link: { label: 'mayfold.com', href: 'https://mayfold.com' },
 		cardSize: 'tall'
-	},
-	{
-		id: 'customer-area',
-		title: 'Customer Area',
-		meta: 'Adyen — 2021–2022',
-		description:
-			'Led design and engineering on the merchant hub — replacing search, tightening multi-account flows, and keeping the shell coherent as teams shipped into it.',
-		overlayHeadline: 'Customer Area at Adyen',
-		body: [
-			'The Customer Area is where merchants live day to day. I led design, frontend, and backend while we replaced search and cleaned up multi-account flows.',
-			'Most of the job was being the glue between product intent and what actually shipped into a shared shell.'
-		],
-		services: 'Product Design, Engineering Leadership',
-		year: '2021 – 2022',
-		role: 'Engineering Team Lead',
-		highlights: [
-			'Rebuilt merchant search for scale',
-			'Multi-account navigation cleanup',
-			'Cross-functional delivery ownership'
-		],
-		link: { label: 'adyen.com', href: 'https://www.adyen.com' },
-		cardSize: 'tall'
-	},
-	{
-		id: 'design-system',
-		title: 'Design System',
-		meta: 'Adyen — 2018–2021',
-		description:
-			'Adyen’s first design system and a chunk of the platform shell — navigation, accounts, multi-account. A lot of that is still in the product today.',
-		overlayHeadline: 'Design system at Adyen',
-		body: [
-			'Owned Adyen’s first design system and a large piece of the platform shell — navigation, accounts, multi-account flows.',
-			'The useful lesson was which foundations aged well, and which we had to rip out once the product got bigger.'
-		],
-		services: 'Design Systems, Product Design',
-		year: '2018 – 2021',
-		role: 'Design System Lead',
-		highlights: [
-			'Foundational component library',
-			'Platform shell: nav & accounts',
-			'Adoption across merchant product teams'
-		],
-		link: { label: 'adyen.com', href: 'https://www.adyen.com' },
-		cardSize: 'mid'
 	}
 ];
 
@@ -373,7 +343,7 @@ export const roles = [
 		company: 'Adyen',
 		dates: 'Jun 2018 – Jun 2021',
 		description:
-			'Started on payment methods and bulk settings. Then owned the first design system and a chunk of the platform shell: navigation, accounts, multi-account flows. A lot of that is still in the product.',
+			'Started on payment methods and bulk settings. Then owned the first design system and a chunk of the platform: navigation, accounts, multi-account flows. A lot of that is still in the product.',
 		cards: 2
 	},
 	{

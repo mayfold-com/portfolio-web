@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
-	import { untrack } from 'svelte';
-	import { getWorkProject } from '$lib/data';
+	import { tick, untrack } from 'svelte';
+	import { getWorkProject, type CaseFigureRatio } from '$lib/data';
 	import {
 		activeMotion,
 		defaultCloseEaseId,
@@ -38,6 +38,18 @@
 	/** opening → open ⇄ dismissing → closing */
 	type SheetPhase = 'opening' | 'open' | 'dismissing' | 'closing';
 
+	/** Clicked case figure shown full-bleed inside the project window. */
+	type FigureFill = {
+		key: string;
+		ratio: CaseFigureRatio;
+		caption?: string;
+		src?: string;
+		background?: string;
+		framed?: boolean;
+		peek?: boolean;
+		from: Rect;
+	};
+
 	let id = $state<string | null>(null);
 	let origin = $state<ProjectOrigin | null>(null);
 	let rendered = $state(false);
@@ -63,8 +75,6 @@
 	let openFrame = 0;
 	let closeFrame = 0;
 	let coverFrame = 0;
-	/** WAAPI morph for open/close chrome — respects close-curve picker. */
-	let chromeAnim: Animation | undefined;
 	let closeTimer: ReturnType<typeof setTimeout> | undefined;
 	let contentTimer: ReturnType<typeof setTimeout> | undefined;
 	let settleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -88,6 +98,62 @@
 	/** Custom overlay scrollbar (macOS hides native ones). */
 	let scrollThumb = $state({ top: 0, height: 0, visible: false });
 	let thumbDragging = $state(false);
+	/** Figure viewer overlay scrollbars (vertical + horizontal). */
+	let figureScrollThumbY = $state({ top: 0, height: 0, visible: false });
+	let figureScrollThumbX = $state({ left: 0, width: 0, visible: false });
+	let figureThumbDragging = $state(false);
+
+	/** Clicked case figure — fills the project window. */
+	let figureFill = $state<FigureFill | null>(null);
+	let figureFillEl: HTMLDivElement | undefined = $state();
+	let figureScrollerEl: HTMLDivElement | undefined = $state();
+	let figureScrollRailXEl: HTMLDivElement | undefined = $state();
+	let figureFlyClipEl: HTMLDivElement | undefined = $state();
+	let figureFlyEl: HTMLImageElement | undefined = $state();
+	let figureStageEl: HTMLDivElement | undefined = $state();
+	let figureFillMorphing = $state(false);
+	/** Case thumb key hidden while the figure viewer (or FLIP) owns that image. */
+	let figureOpenKey = $state<string | null>(null);
+	let figureFillEpoch = 0;
+	let figureFillTimer: ReturnType<typeof setTimeout> | undefined;
+	let figureFlyAnims: Animation[] = [];
+	let figureStageAnim: Animation | null = null;
+	/** Eat residual trackpad inertia after figure-fill closes so the case doesn't scroll. */
+	let sheetScrollLockUntil = 0;
+	let sheetScrollLockY = 0;
+	let sheetScrollLockTimer: ReturnType<typeof setTimeout> | undefined;
+
+	/** Nested figure fills the project window edge-to-edge. */
+	const FIGURE_FILL_INSET = 0;
+	/** Default inset around the image at zoom 1 (and minimum canvas pad). */
+	const FIGURE_VIEW_PAD = 20;
+	/** Allow zooming out past “fit width” so the image can sit inside a larger canvas. */
+	const FIGURE_ZOOM_MIN = 0.25;
+	const FIGURE_ZOOM_MAX = 8;
+	const FIGURE_ZOOM_STEP = 0.25;
+	let figureZoom = $state(1);
+	const canFigureZoomOut = $derived(figureZoom > FIGURE_ZOOM_MIN + 0.001);
+	const canFigureZoomIn = $derived(figureZoom < FIGURE_ZOOM_MAX - 0.001);
+	let figurePinchDist = 0;
+	let figurePinchZoom0 = 1;
+	/**
+	 * Minimap: canvas = max zoom-out world; image fixed inside it; view moves/resizes.
+	 * Image/view rects are % of that max-out world.
+	 */
+	let figureMinimap = $state({
+		visible: false,
+		aspect: 16 / 10,
+		image: { left: 0, top: 0, width: 100, height: 100 },
+		view: { left: 0, top: 0, width: 100, height: 100 }
+	});
+	let figureMinimapDragging = false;
+	/** Grab-to-pan on the figure canvas (non-reactive — class toggled on the scroller). */
+	let figurePanning = false;
+	let figurePanPointerId: number | null = null;
+	let figurePanLastX = 0;
+	let figurePanLastY = 0;
+	/** Case figures with `expand` that have finished their reveal. */
+	let expandedFigures = $state<Record<string, boolean>>({});
 
 	/** 0–1 ring fill (non-reactive — gesture paints without re-rendering). */
 	let ringProgress = 0;
@@ -98,10 +164,11 @@
 	let gestureVelocity = 0;
 
 	const project = $derived(getWorkProject(id));
-	const overlayHeadline = $derived(project?.overlayHeadline ?? project?.title ?? '');
+	const sheetTitle = $derived(project?.title ?? '');
 	const isDismissing = $derived(phase === 'dismissing');
 	const isClosing = $derived(phase === 'closing');
-	const canDismiss = $derived(phase === 'open' || phase === 'dismissing');
+	const figureFilled = $derived(Boolean(figureFill));
+	const canDismiss = $derived((phase === 'open' || phase === 'dismissing') && !figureFilled);
 
 	/**
 	 * Dismiss is overscroll-at-top only (scrollTop === 0).
@@ -237,8 +304,7 @@
 			borderRadius: r.radius
 		};
 
-		chromeAnim?.cancel();
-		chromeAnim = undefined;
+		for (const anim of el.getAnimations()) anim.cancel();
 		el.style.transition = 'none';
 		el.style.transform = 'none';
 
@@ -267,11 +333,10 @@
 			easing: ease,
 			fill: 'forwards'
 		});
-		chromeAnim = anim;
 
 		anim.finished
 			.then(() => {
-				if (chromeAnim !== anim) return;
+				if (anim.playState === 'idle') return;
 				el.style.top = next.top;
 				el.style.left = next.left;
 				el.style.width = next.width;
@@ -279,23 +344,842 @@
 				el.style.borderRadius = next.borderRadius;
 				el.style.willChange = 'auto';
 				anim.cancel();
-				chromeAnim = undefined;
 			})
 			.catch(() => {
 				/* cancelled mid-flight */
 			});
 	}
 
+	function rectRelativeToCard(el: Element): Rect {
+		const card = cardEl?.getBoundingClientRect();
+		const r = el.getBoundingClientRect();
+		const radius = getComputedStyle(el).borderRadius || '1rem';
+		if (!card) {
+			return withPxRadius({
+				top: r.top,
+				left: r.left,
+				width: r.width,
+				height: r.height,
+				radius
+			});
+		}
+		return withPxRadius({
+			top: r.top - card.top,
+			left: r.left - card.left,
+			width: r.width,
+			height: r.height,
+			radius
+		});
+	}
+
+	function figureFillTargetRect(): Rect {
+		const inset = FIGURE_FILL_INSET;
+		const cardRadius = radiusPx(
+			cardEl ? getComputedStyle(cardEl).borderRadius || '1.75rem' : '1.75rem'
+		);
+		const w = cardEl?.clientWidth ?? 0;
+		const h = cardEl?.clientHeight ?? 0;
+		return withPxRadius({
+			top: inset,
+			left: inset,
+			width: Math.max(0, w - inset * 2),
+			height: Math.max(0, h - inset * 2),
+			radius: `${Math.max(0, cardRadius - inset)}px`
+		});
+	}
+
+	function settleFigureFillChrome() {
+		if (!figureFillEl) return;
+		const inset = FIGURE_FILL_INSET;
+		const cardRadius = radiusPx(
+			cardEl ? getComputedStyle(cardEl).borderRadius || '1.75rem' : '1.75rem'
+		);
+		figureFillEl.style.top = `${inset}px`;
+		figureFillEl.style.left = `${inset}px`;
+		figureFillEl.style.width = `calc(100% - ${inset * 2}px)`;
+		figureFillEl.style.height = `calc(100% - ${inset * 2}px)`;
+		figureFillEl.style.borderRadius = `${Math.max(0, cardRadius - inset)}px`;
+		figureFillEl.style.willChange = 'auto';
+	}
+
+	function resetFigureView() {
+		figureZoom = 1;
+		figurePinchDist = 0;
+		figurePinchZoom0 = 1;
+		figureMinimapDragging = false;
+		figureThumbDragging = false;
+		endFigurePan();
+		figureMinimap = {
+			visible: false,
+			aspect: 16 / 10,
+			image: { left: 0, top: 0, width: 100, height: 100 },
+			view: { left: 0, top: 0, width: 100, height: 100 }
+		};
+		figureScrollThumbY = { top: 0, height: 0, visible: false };
+		figureScrollThumbX = { left: 0, width: 0, visible: false };
+		if (figureFillEl) figureFillEl.style.setProperty('--figure-zoom', '1');
+		if (figureScrollerEl) {
+			figureScrollerEl.scrollTop = 0;
+			figureScrollerEl.scrollLeft = 0;
+		}
+		const page = figureScrollerEl?.querySelector('.figure-page');
+		if (page instanceof HTMLElement) page.style.padding = '0';
+	}
+
+	/** Center when the image fits; top-align (keep horizontal center) when it overflows. */
+	function settleFigureInCanvas() {
+		const scroller = figureScrollerEl;
+		const img = figureImageEl();
+		if (!scroller || !(img instanceof HTMLElement)) return;
+		const maxL = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+		const maxT = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+		scroller.scrollLeft = maxL / 2;
+		if (img.offsetHeight > scroller.clientHeight - FIGURE_VIEW_PAD * 2 + 0.5) {
+			scroller.scrollTop = 0;
+		} else {
+			scroller.scrollTop = maxT / 2;
+		}
+	}
+
+	function touchDistance(a: Touch, b: Touch) {
+		return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+	}
+
+	function figureImageEl() {
+		return figureScrollerEl?.querySelector('.figure-image') ?? null;
+	}
+
+	/**
+	 * Keep at least FIGURE_VIEW_PAD around the image; expand padding when zoomed out
+	 * so the image can still be panned inside the canvas.
+	 */
+	function syncFigureCentering(opts?: { settle?: boolean }) {
+		const scroller = figureScrollerEl;
+		const page = scroller?.querySelector('.figure-page');
+		const img = figureImageEl();
+		if (!scroller || !(page instanceof HTMLElement) || !(img instanceof HTMLElement)) return;
+
+		page.style.padding = '0';
+		const padX = Math.max(
+			FIGURE_VIEW_PAD,
+			scroller.clientWidth - img.offsetWidth - FIGURE_VIEW_PAD
+		);
+		const padY = Math.max(
+			FIGURE_VIEW_PAD,
+			scroller.clientHeight - img.offsetHeight - FIGURE_VIEW_PAD
+		);
+		page.style.padding = `${padY}px ${padX}px`;
+		if (opts?.settle) settleFigureInCanvas();
+	}
+
+	/**
+	 * Zoom toward a screen point (cursor / pinch midpoint). Toolbar uses viewport center.
+	 */
+	function setFigureZoomLevel(next: number, clientX?: number, clientY?: number) {
+		const scroller = figureScrollerEl;
+		const page = scroller?.querySelector('.figure-page');
+		const z0 = figureZoom;
+		const z1 = Math.min(FIGURE_ZOOM_MAX, Math.max(FIGURE_ZOOM_MIN, next));
+		if (Math.abs(z1 - z0) < 1e-6) return;
+
+		const img = figureImageEl();
+		let relX = 0.5;
+		let relY = 0.5;
+		let viewX = 0.5;
+		let viewY = 0.5;
+
+		if (scroller && img instanceof HTMLElement) {
+			const scrollerRect = scroller.getBoundingClientRect();
+			const anchorX = clientX ?? scrollerRect.left + scroller.clientWidth / 2;
+			const anchorY = clientY ?? scrollerRect.top + scroller.clientHeight / 2;
+			viewX = anchorX - scrollerRect.left;
+			viewY = anchorY - scrollerRect.top;
+			const imgRect = img.getBoundingClientRect();
+			if (imgRect.width > 0 && imgRect.height > 0) {
+				relX = (anchorX - imgRect.left) / imgRect.width;
+				relY = (anchorY - imgRect.top) / imgRect.height;
+			}
+		}
+
+		figureZoom = z1;
+		if (figureFillEl) figureFillEl.style.setProperty('--figure-zoom', String(z1));
+		if (scroller) void scroller.offsetHeight;
+		syncFigureCentering();
+		if (scroller) void scroller.offsetHeight;
+
+		if (!scroller || !(img instanceof HTMLElement) || !(page instanceof HTMLElement)) return;
+
+		const style = getComputedStyle(page);
+		const padLeft = parseFloat(style.paddingLeft) || 0;
+		const padTop = parseFloat(style.paddingTop) || 0;
+		const maxL = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+		const maxT = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+		scroller.scrollLeft = Math.min(
+			maxL,
+			Math.max(0, padLeft + relX * img.offsetWidth - viewX)
+		);
+		scroller.scrollTop = Math.min(
+			maxT,
+			Math.max(0, padTop + relY * img.offsetHeight - viewY)
+		);
+		syncFigureMinimap();
+	}
+
+	function bumpFigureZoom(dir: 1 | -1) {
+		const stepped =
+			Math.round((figureZoom + dir * FIGURE_ZOOM_STEP) / FIGURE_ZOOM_STEP) * FIGURE_ZOOM_STEP;
+		setFigureZoomLevel(stepped);
+	}
+
+	function onFigureImageLoad() {
+		syncFigureCentering({ settle: true });
+		if (!figureFillMorphing) syncFigureMinimap();
+	}
+
+	/**
+	 * Fixed minimap space = layout at FIGURE_ZOOM_MIN (largest panable canvas).
+	 * Current view is projected into that space so it can never exceed the canvas.
+	 */
+	function figureMinimapWorld() {
+		const scroller = figureScrollerEl;
+		const page = scroller?.querySelector('.figure-page');
+		const img = figureImageEl();
+		if (!scroller || !(page instanceof HTMLElement) || !(img instanceof HTMLElement)) return null;
+
+		const viewW = scroller.clientWidth;
+		const viewH = scroller.clientHeight;
+		const imgW = img.offsetWidth;
+		const imgH = img.offsetHeight;
+		const z = Math.max(figureZoom, 0.001);
+		if (viewW < 1 || viewH < 1 || imgW < 1 || imgH < 1) return null;
+
+		const style = getComputedStyle(page);
+		const padL = parseFloat(style.paddingLeft) || 0;
+		const padT = parseFloat(style.paddingTop) || 0;
+
+		const baseW = imgW / z;
+		const baseH = imgH / z;
+		const imgWMin = baseW * FIGURE_ZOOM_MIN;
+		const imgHMin = baseH * FIGURE_ZOOM_MIN;
+		const padXMin = Math.max(FIGURE_VIEW_PAD, viewW - imgWMin - FIGURE_VIEW_PAD);
+		const padYMin = Math.max(FIGURE_VIEW_PAD, viewH - imgHMin - FIGURE_VIEW_PAD);
+		const worldW = imgWMin + padXMin * 2;
+		const worldH = imgHMin + padYMin * 2;
+
+		const toWorld = (x: number, y: number) => ({
+			x: padXMin + ((x - padL) / imgW) * imgWMin,
+			y: padYMin + ((y - padT) / imgH) * imgHMin
+		});
+
+		const fromWorld = (x: number, y: number) => ({
+			x: padL + ((x - padXMin) / imgWMin) * imgW,
+			y: padT + ((y - padYMin) / imgHMin) * imgH
+		});
+
+		return {
+			viewW,
+			viewH,
+			worldW,
+			worldH,
+			padXMin,
+			padYMin,
+			imgWMin,
+			imgHMin,
+			toWorld,
+			fromWorld
+		};
+	}
+
+	function syncFigureMinimap() {
+		const scroller = figureScrollerEl;
+		const world = figureMinimapWorld();
+		if (!scroller || !world) {
+			figureMinimap = {
+				visible: false,
+				aspect: 16 / 10,
+				image: { left: 0, top: 0, width: 100, height: 100 },
+				view: { left: 0, top: 0, width: 100, height: 100 }
+			};
+			updateFigureScrollThumbs();
+			return;
+		}
+
+		const { worldW, worldH, padXMin, padYMin, imgWMin, imgHMin, viewW, viewH, toWorld } = world;
+		const tl = toWorld(scroller.scrollLeft, scroller.scrollTop);
+		const br = toWorld(scroller.scrollLeft + viewW, scroller.scrollTop + viewH);
+
+		figureMinimap = {
+			visible: true,
+			aspect: worldW / worldH,
+			image: {
+				left: (padXMin / worldW) * 100,
+				top: (padYMin / worldH) * 100,
+				width: (imgWMin / worldW) * 100,
+				height: (imgHMin / worldH) * 100
+			},
+			view: {
+				left: (tl.x / worldW) * 100,
+				top: (tl.y / worldH) * 100,
+				width: Math.max(2, ((br.x - tl.x) / worldW) * 100),
+				height: Math.max(2, ((br.y - tl.y) / worldH) * 100)
+			}
+		};
+		updateFigureScrollThumbs();
+	}
+
+	/** Place the view-window center at a normalized point on the max-out canvas. */
+	function scrollFigureToMinimapPoint(normX: number, normY: number) {
+		const scroller = figureScrollerEl;
+		const world = figureMinimapWorld();
+		if (!scroller || !world) return;
+
+		const x = Math.min(1, Math.max(0, normX));
+		const y = Math.min(1, Math.max(0, normY));
+		const content = world.fromWorld(x * world.worldW, y * world.worldH);
+		const maxL = Math.max(0, scroller.scrollWidth - world.viewW);
+		const maxT = Math.max(0, scroller.scrollHeight - world.viewH);
+		scroller.scrollLeft = Math.min(maxL, Math.max(0, content.x - world.viewW / 2));
+		scroller.scrollTop = Math.min(maxT, Math.max(0, content.y - world.viewH / 2));
+		syncFigureMinimap();
+	}
+
+	function endFigurePan(scroller = figureScrollerEl) {
+		figurePanning = false;
+		figurePanPointerId = null;
+		scroller?.classList.remove('is-panning');
+	}
+
+	function onFigurePanPointerDown(event: PointerEvent) {
+		if (figureFillMorphing || figureMinimapDragging || figureThumbDragging || figurePinchDist > 0)
+			return;
+		if (event.button !== 0) return;
+		const scroller = figureScrollerEl;
+		if (!scroller) return;
+
+		figurePanning = true;
+		figurePanPointerId = event.pointerId;
+		figurePanLastX = event.clientX;
+		figurePanLastY = event.clientY;
+		scroller.classList.add('is-panning');
+		scroller.setPointerCapture(event.pointerId);
+		event.preventDefault();
+	}
+
+	function onFigurePanPointerMove(event: PointerEvent) {
+		if (!figurePanning || event.pointerId !== figurePanPointerId) return;
+		if (figurePinchDist > 0) {
+			endFigurePan();
+			return;
+		}
+		const scroller = figureScrollerEl;
+		if (!scroller) return;
+
+		const dx = event.clientX - figurePanLastX;
+		const dy = event.clientY - figurePanLastY;
+		figurePanLastX = event.clientX;
+		figurePanLastY = event.clientY;
+		scroller.scrollLeft -= dx;
+		scroller.scrollTop -= dy;
+	}
+
+	function onFigurePanPointerUp(event: PointerEvent) {
+		if (!figurePanning || event.pointerId !== figurePanPointerId) return;
+		const scroller = figureScrollerEl;
+		endFigurePan(scroller);
+		try {
+			scroller?.releasePointerCapture(event.pointerId);
+		} catch {
+			/* already released */
+		}
+	}
+
+	function onFigureMinimapPointerDown(event: PointerEvent) {
+		if (event.button !== 0) return;
+		const map = event.currentTarget;
+		if (!(map instanceof HTMLElement)) return;
+		endFigurePan();
+		figureMinimapDragging = true;
+		map.setPointerCapture(event.pointerId);
+		const rect = map.getBoundingClientRect();
+		scrollFigureToMinimapPoint(
+			(event.clientX - rect.left) / rect.width,
+			(event.clientY - rect.top) / rect.height
+		);
+	}
+
+	function onFigureMinimapPointerMove(event: PointerEvent) {
+		if (!figureMinimapDragging) return;
+		const map = event.currentTarget;
+		if (!(map instanceof HTMLElement)) return;
+		const rect = map.getBoundingClientRect();
+		scrollFigureToMinimapPoint(
+			(event.clientX - rect.left) / rect.width,
+			(event.clientY - rect.top) / rect.height
+		);
+	}
+
+	function onFigureMinimapPointerUp(event: PointerEvent) {
+		if (!figureMinimapDragging) return;
+		figureMinimapDragging = false;
+		try {
+			(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+		} catch {
+			/* already released */
+		}
+	}
+
+	function figureScrollBy(delta: number) {
+		if (!figureScrollerEl) return false;
+		const max = Math.max(0, figureScrollerEl.scrollHeight - figureScrollerEl.clientHeight);
+		const next = Math.min(max, Math.max(0, figureScrollerEl.scrollTop + delta));
+		if (next === figureScrollerEl.scrollTop) return false;
+		figureScrollerEl.scrollTop = next;
+		return true;
+	}
+
+	function figureFillIsLight(background?: string) {
+		if (!background) return false;
+		const hex = background.trim().replace(/^#/, '');
+		if (!/^[0-9a-fA-F]{6}$/.test(hex)) return false;
+		const r = Number.parseInt(hex.slice(0, 2), 16);
+		const g = Number.parseInt(hex.slice(2, 4), 16);
+		const b = Number.parseInt(hex.slice(4, 6), 16);
+		return (r * 299 + g * 587 + b * 114) / 1000 > 160;
+	}
+
+	function markFigureExpanded(key: string) {
+		if (expandedFigures[key]) return;
+		expandedFigures[key] = true;
+	}
+
+	/** Cropped figures grow to full once they settle in view. */
+	function figureExpandOnView(node: HTMLElement, key: string) {
+		if (!key) return;
+		if (reduceMotion) {
+			markFigureExpanded(key);
+			return;
+		}
+
+		let io: IntersectionObserver | undefined;
+		const arm = () => {
+			io?.disconnect();
+			io = new IntersectionObserver(
+				(entries) => {
+					for (const entry of entries) {
+						if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
+							markFigureExpanded(key);
+							io?.disconnect();
+							break;
+						}
+					}
+				},
+				{
+					root: scrollerEl ?? null,
+					rootMargin: '0px 0px -10% 0px',
+					threshold: [0.45, 0.6]
+				}
+			);
+			io.observe(node);
+		};
+
+		// Scroller binds after open — retry once on the next frame if needed.
+		arm();
+		const retry = requestAnimationFrame(arm);
+
+		return {
+			destroy() {
+				cancelAnimationFrame(retry);
+				io?.disconnect();
+			}
+		};
+	}
+
+	function openFigureFill(
+		event: MouseEvent,
+		payload: {
+			key: string;
+			ratio: CaseFigureRatio;
+			caption?: string;
+			src?: string;
+			background?: string;
+			framed?: boolean;
+			peek?: boolean;
+		}
+	) {
+		if (phase !== 'open' || !contentVisible || morphing || closeRequested || figureFill) return;
+		const trigger = event.currentTarget;
+		if (!(trigger instanceof Element) || !cardEl) return;
+
+		const from = rectRelativeToCard(trigger);
+		const epoch = ++figureFillEpoch;
+		cancelFigureFly();
+		figureFillMorphing = true;
+		resetFigureView();
+		rawPull = 0;
+		clearPullSamples();
+		paintRing(0);
+		figureFill = { ...payload, from };
+		setCaseFigureThumbHidden(payload.key);
+		hideCloseHint();
+
+		void tick().then(async () => {
+			if (epoch !== figureFillEpoch || !figureFillEl) return;
+			// Full-size shell for the open lifetime; FLIP owns the perceived motion.
+			settleFigureFillChrome();
+			if (figureStageEl) figureStageEl.style.opacity = '0';
+
+			await waitForFigureImage();
+			if (epoch !== figureFillEpoch || !figureFillEl) return;
+
+			resetFigureView();
+			syncFigureCentering({ settle: true });
+			void figureScrollerEl?.offsetHeight;
+			await tick();
+			if (epoch !== figureFillEpoch || !figureFillEl) return;
+
+			const settled = figureSettledImageRect();
+			const clipFrom = figureThumbClipRect(payload.key);
+			const bitmapFrom = figureThumbBitmapRect(payload.key);
+
+			if (reduceMotion || !payload.src || !figureFlyClipEl || !figureFlyEl) {
+				void fadeFigureStage(1, 0, motion.openEase);
+				figureFillMorphing = false;
+				syncFigureMinimap();
+				return;
+			}
+
+			void fadeFigureStage(1, motion.openDuration, motion.openEase);
+			await animateFigureShared(clipFrom, bitmapFrom, settled, settled, {
+				duration: motion.openDuration,
+				ease: motion.openEase
+			});
+			if (epoch !== figureFillEpoch) return;
+
+			// Commit stage opacity in case the fade was still running / interrupted.
+			if (figureStageEl) figureStageEl.style.opacity = '1';
+			syncFigureCentering({ settle: true });
+			syncFigureMinimap();
+			figureFillMorphing = false;
+			hideFigureFly();
+		});
+	}
+
+	/**
+	 * After figure-fill closes, trackpad inertia still emits wheel events that
+	 * would scroll the case study. Pin scrollTop and eat input briefly.
+	 */
+	function lockSheetScrollBriefly(ms = 480) {
+		if (!scrollerEl) return;
+		sheetScrollLockY = scrollerEl.scrollTop;
+		sheetScrollLockUntil = performance.now() + ms;
+		clearTimeout(sheetScrollLockTimer);
+		sheetScrollLockTimer = setTimeout(() => {
+			sheetScrollLockUntil = 0;
+		}, ms);
+	}
+
+	function sheetScrollLocked() {
+		return performance.now() < sheetScrollLockUntil;
+	}
+
+	function pinSheetScrollLock() {
+		if (!scrollerEl || !sheetScrollLocked()) return;
+		if (scrollerEl.scrollTop !== sheetScrollLockY) {
+			scrollerEl.scrollTop = sheetScrollLockY;
+		}
+	}
+
+	function rectRelativeTo(el: Element, container: Element): Rect {
+		const c = container.getBoundingClientRect();
+		const r = el.getBoundingClientRect();
+		const radius = getComputedStyle(el).borderRadius || '0px';
+		return withPxRadius({
+			top: r.top - c.top,
+			left: r.left - c.left,
+			width: r.width,
+			height: r.height,
+			radius
+		});
+	}
+
+	/** Visible thumb window (button) in figure-fill coordinates. */
+	function figureThumbClipRect(key: string): Rect {
+		const fallback = figureFill?.from ?? figureFillTargetRect();
+		const btn = scrollerEl?.querySelector(`[data-figure-key="${key}"]`);
+		if (!(btn instanceof Element) || !figureFillEl) return fallback;
+		return rectRelativeTo(btn, figureFillEl);
+	}
+
+	/**
+	 * Thumb bitmap rect in figure-fill coordinates.
+	 * Peek thumbs use an oversized top-left image clipped by the button.
+	 */
+	function figureThumbBitmapRect(key: string): Rect {
+		const clip = figureThumbClipRect(key);
+		const btn = scrollerEl?.querySelector(`[data-figure-key="${key}"]`);
+		if (!(btn instanceof Element) || !figureFillEl) return clip;
+		const img = btn.querySelector('img');
+		if (!(img instanceof Element)) return clip;
+		return rectRelativeTo(img, figureFillEl);
+	}
+
+	/** Settled viewer image rect in figure-fill coordinates. */
+	function figureSettledImageRect(): Rect {
+		const img = figureImageEl();
+		if (!(img instanceof Element) || !figureFillEl) {
+			return withPxRadius({
+				top: FIGURE_VIEW_PAD,
+				left: FIGURE_VIEW_PAD,
+				width: Math.max(0, (figureFillEl?.clientWidth ?? 0) - FIGURE_VIEW_PAD * 2),
+				height: Math.max(0, (figureFillEl?.clientHeight ?? 0) - FIGURE_VIEW_PAD * 2),
+				radius: '8px'
+			});
+		}
+		const rect = rectRelativeTo(img, figureFillEl);
+		return { ...rect, radius: '8px' };
+	}
+
+	function setCaseFigureThumbHidden(key: string | null) {
+		figureOpenKey = key;
+	}
+
+	function cancelFigureFly() {
+		for (const anim of figureFlyAnims) anim.cancel();
+		figureFlyAnims = [];
+	}
+
+	function cancelFigureStage() {
+		figureStageAnim?.cancel();
+		figureStageAnim = null;
+	}
+
+	function rectKeyframes(from: Rect, to: Rect) {
+		return [
+			{
+				top: `${from.top}px`,
+				left: `${from.left}px`,
+				width: `${from.width}px`,
+				height: `${from.height}px`,
+				borderRadius: from.radius
+			},
+			{
+				top: `${to.top}px`,
+				left: `${to.left}px`,
+				width: `${to.width}px`,
+				height: `${to.height}px`,
+				borderRadius: to.radius
+			}
+		];
+	}
+
+	function applyRect(el: HTMLElement, rect: Rect) {
+		el.style.top = `${rect.top}px`;
+		el.style.left = `${rect.left}px`;
+		el.style.width = `${rect.width}px`;
+		el.style.height = `${rect.height}px`;
+		el.style.borderRadius = rect.radius;
+	}
+
+	function fadeFigureStage(to: number, duration: number, ease: string) {
+		const stage = figureStageEl;
+		if (!stage) return Promise.resolve();
+		cancelFigureStage();
+		const from = Number.parseFloat(getComputedStyle(stage).opacity) || 0;
+		if (reduceMotion || duration <= 0) {
+			stage.style.opacity = String(to);
+			return Promise.resolve();
+		}
+		const anim = stage.animate([{ opacity: from }, { opacity: to }], {
+			duration,
+			easing: ease,
+			fill: 'forwards'
+		});
+		figureStageAnim = anim;
+		return anim.finished
+			.then(() => {
+				stage.style.opacity = String(to);
+				if (figureStageAnim === anim) {
+					anim.cancel();
+					figureStageAnim = null;
+				}
+			})
+			.catch(() => {
+				stage.style.opacity = String(to);
+			});
+	}
+
+	/**
+	 * Shared-element zoom: clip window + bitmap move together.
+	 * Peek thumbs keep the oversized top-left crop, so close zooms into that crop
+	 * instead of squash-stretching the full page into the thumb frame.
+	 */
+	function animateFigureShared(
+		clipFrom: Rect,
+		bitmapFrom: Rect,
+		clipTo: Rect,
+		bitmapTo: Rect,
+		opts: { duration: number; ease: string }
+	): Promise<void> {
+		const clip = figureFlyClipEl;
+		const img = figureFlyEl;
+		if (!clip || !img) return Promise.resolve();
+
+		cancelFigureFly();
+
+		const imgFromLocal: Rect = {
+			top: bitmapFrom.top - clipFrom.top,
+			left: bitmapFrom.left - clipFrom.left,
+			width: bitmapFrom.width,
+			height: bitmapFrom.height,
+			radius: '0px'
+		};
+		const imgToLocal: Rect = {
+			top: bitmapTo.top - clipTo.top,
+			left: bitmapTo.left - clipTo.left,
+			width: bitmapTo.width,
+			height: bitmapTo.height,
+			radius: '0px'
+		};
+
+		clip.style.visibility = 'visible';
+		applyRect(clip, clipFrom);
+		applyRect(img, imgFromLocal);
+
+		if (reduceMotion || opts.duration <= 0) {
+			applyRect(clip, clipTo);
+			applyRect(img, imgToLocal);
+			return Promise.resolve();
+		}
+
+		const timing: KeyframeAnimationOptions = {
+			duration: opts.duration,
+			easing: opts.ease,
+			fill: 'forwards'
+		};
+		const clipAnim = clip.animate(rectKeyframes(clipFrom, clipTo), timing);
+		const imgAnim = img.animate(rectKeyframes(imgFromLocal, imgToLocal), timing);
+		figureFlyAnims = [clipAnim, imgAnim];
+
+		return Promise.all([clipAnim.finished, imgAnim.finished])
+			.then(() => {
+				applyRect(clip, clipTo);
+				applyRect(img, imgToLocal);
+				for (const anim of figureFlyAnims) anim.cancel();
+				figureFlyAnims = [];
+			})
+			.catch(() => {
+				/* cancelled mid-flight */
+			});
+	}
+
+	function hideFigureFly() {
+		if (figureFlyClipEl) figureFlyClipEl.style.visibility = 'hidden';
+	}
+
+	function waitForFigureImage(): Promise<void> {
+		const img = figureImageEl();
+		if (!(img instanceof HTMLImageElement)) return Promise.resolve();
+		if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+		return new Promise((resolve) => {
+			const done = () => {
+				img.removeEventListener('load', done);
+				img.removeEventListener('error', done);
+				resolve();
+			};
+			img.addEventListener('load', done);
+			img.addEventListener('error', done);
+		});
+	}
+
+	function finishFigureFillClose(epoch: number) {
+		if (epoch !== figureFillEpoch) return;
+		cancelFigureFly();
+		cancelFigureStage();
+		figureFill = null;
+		figureFillMorphing = false;
+		setCaseFigureThumbHidden(null);
+		resetFigureView();
+		rawPull = 0;
+		paintRing(0);
+		lockSheetScrollBriefly(480);
+		pinSheetScrollLock();
+		focusScroller();
+	}
+
+	function closeFigureFill(opts?: { immediate?: boolean }) {
+		if (!figureFill) return;
+		const current = figureFill;
+		const epoch = ++figureFillEpoch;
+		clearTimeout(figureFillTimer);
+		clearTimeout(settleTimer);
+		cancelFigureFly();
+		rawPull = 0;
+		clearPullSamples();
+		paintRing(0);
+		figureFillMorphing = true;
+		// Cover the close morph + leftover trackpad inertia.
+		lockSheetScrollBriefly(motion.closeDuration + 480);
+
+		if (opts?.immediate || reduceMotion || !figureFillEl || !cardEl) {
+			fadeFigureStage(0, 0, motion.closeEase);
+			finishFigureFillClose(epoch);
+			return;
+		}
+
+		void (async () => {
+			// Return to default fit before FLIP (no morph from mid-zoom crop).
+			if (Math.abs(figureZoom - 1) > 0.001) {
+				setFigureZoomLevel(1);
+			}
+			syncFigureCentering({ settle: true });
+			await tick();
+			if (epoch !== figureFillEpoch || !figureFillEl) return;
+
+			const settled = figureSettledImageRect();
+			const clipTo = figureThumbClipRect(current.key);
+			const bitmapTo = figureThumbBitmapRect(current.key);
+			void fadeFigureStage(0, motion.closeDuration, motion.closeEase);
+
+			await tick();
+			if (epoch !== figureFillEpoch || !figureFlyClipEl || !figureFlyEl) {
+				finishFigureFillClose(epoch);
+				return;
+			}
+
+			// Zoom into the thumb crop (peek = oversized top-left) while the clip shrinks.
+			await animateFigureShared(settled, settled, clipTo, bitmapTo, {
+				duration: motion.closeDuration,
+				ease: motion.closeEase
+			});
+			if (epoch !== figureFillEpoch) return;
+			finishFigureFillClose(epoch);
+		})();
+	}
+
 	function paintRing(progress: number) {
 		ringProgress = clamp01(progress);
-		backdropEl?.style.setProperty('--dismiss-progress', String(ringProgress * 0.35));
+		// Don't dim the page backdrop while closing a figure fill.
+		const dismissDim = figureFilled ? 0 : ringProgress * 0.35;
+		backdropEl?.style.setProperty('--dismiss-progress', String(dismissDim));
 		backdropEl?.style.setProperty('--ring-progress', String(ringProgress));
 		cardEl?.style.setProperty('--ring-progress', String(ringProgress));
-		ringEl?.classList.toggle('active', ringProgress > 0.001 && canDismiss);
+
+		const sheetActive = ringProgress > 0.001 && canDismiss;
+		ringEl?.classList.toggle('active', sheetActive);
 	}
 
 	function atScrollTop() {
 		return !scrollerEl || scrollerEl.scrollTop <= 0.5;
+	}
+
+	/**
+	 * Kill rubber-band only at the top (hero must never expose a gap above it).
+	 * Keep `contain` farther down so the bottom can still bounce.
+	 */
+	function syncTopOverscrollLock() {
+		if (!scrollerEl) return;
+		const nearTop = scrollerEl.scrollTop <= 64 || rawPull > 0 || phase === 'dismissing';
+		scrollerEl.style.overscrollBehaviorY = nearTop ? 'none' : 'contain';
 	}
 
 	function clearPullSamples() {
@@ -389,6 +1273,7 @@
 			});
 			sheetH = open.height;
 		}
+		syncTopOverscrollLock();
 	}
 
 	function paintDismiss(nextRaw: number) {
@@ -400,6 +1285,7 @@
 		if (rawPull > DEAD_ZONE && phase === 'open') phase = 'dismissing';
 		paintRing(progress);
 		paintDismissPreview(progress);
+		syncTopOverscrollLock();
 
 		if (rawPull >= PULL_RANGE) {
 			// Via close() so scroll-to-dismiss also pops `?project=` history.
@@ -427,6 +1313,22 @@
 
 	const SCROLL_TRACK_PAD = 28;
 	const SCROLL_THUMB_MIN = 36;
+	/** Clear close / zoom chrome on the vertical rail; horizontal sits on the bottom edge. */
+	const FIGURE_SCROLL_TRACK_PAD_Y = 52;
+	/** Fallback when the X rail isn't measured yet (matches CSS chrome clearances). */
+	const FIGURE_SCROLL_RAIL_X_LEFT = 112;
+	const FIGURE_SCROLL_RAIL_X_RIGHT = 112;
+
+	function figureScrollTrackWidth() {
+		const measured = figureScrollRailXEl?.clientWidth ?? 0;
+		if (measured > 0) return measured;
+		const scroller = figureScrollerEl;
+		if (!scroller) return 0;
+		return Math.max(
+			0,
+			scroller.clientWidth - FIGURE_SCROLL_RAIL_X_LEFT - FIGURE_SCROLL_RAIL_X_RIGHT
+		);
+	}
 
 	function updateScrollThumb() {
 		if (!scrollerEl) {
@@ -444,6 +1346,50 @@
 		// Rail is already inset; thumb top is relative to the rail.
 		const top = (trackH - height) * (scrollTop / overflow);
 		scrollThumb = { top, height, visible: true };
+	}
+
+	function updateFigureScrollThumbs() {
+		const scroller = figureScrollerEl;
+		if (!scroller) {
+			figureScrollThumbY = { top: 0, height: 0, visible: false };
+			figureScrollThumbX = { left: 0, width: 0, visible: false };
+			return;
+		}
+
+		const { scrollTop, scrollLeft, scrollHeight, scrollWidth, clientHeight, clientWidth } =
+			scroller;
+		const overflowY = scrollHeight - clientHeight;
+		const overflowX = scrollWidth - clientWidth;
+
+		if (overflowY <= 1 || clientHeight <= 0) {
+			figureScrollThumbY = { top: 0, height: 0, visible: false };
+		} else {
+			const trackH = Math.max(0, clientHeight - FIGURE_SCROLL_TRACK_PAD_Y * 2);
+			const height = Math.min(
+				trackH,
+				Math.max(SCROLL_THUMB_MIN, trackH * (clientHeight / scrollHeight))
+			);
+			figureScrollThumbY = {
+				top: (trackH - height) * (scrollTop / overflowY),
+				height,
+				visible: true
+			};
+		}
+
+		if (overflowX <= 1 || clientWidth <= 0) {
+			figureScrollThumbX = { left: 0, width: 0, visible: false };
+		} else {
+			const trackW = figureScrollTrackWidth();
+			const width = Math.min(
+				trackW,
+				Math.max(SCROLL_THUMB_MIN, trackW * (clientWidth / scrollWidth))
+			);
+			figureScrollThumbX = {
+				left: (trackW - width) * (scrollLeft / overflowX),
+				width,
+				visible: true
+			};
+		}
 	}
 
 	function onThumbPointerDown(event: PointerEvent) {
@@ -481,6 +1427,80 @@
 		thumb.addEventListener('pointercancel', onUp);
 	}
 
+	function onFigureThumbYPointerDown(event: PointerEvent) {
+		const scroller = figureScrollerEl;
+		if (!scroller || !figureScrollThumbY.visible) return;
+		event.preventDefault();
+		event.stopPropagation();
+		endFigurePan();
+
+		const thumb = event.currentTarget as HTMLElement;
+		const startY = event.clientY;
+		const startScroll = scroller.scrollTop;
+		const overflow = scroller.scrollHeight - scroller.clientHeight;
+		const trackH = Math.max(0, scroller.clientHeight - FIGURE_SCROLL_TRACK_PAD_Y * 2);
+		const travel = Math.max(1, trackH - figureScrollThumbY.height);
+
+		figureThumbDragging = true;
+		thumb.setPointerCapture(event.pointerId);
+
+		const onMove = (moveEvent: PointerEvent) => {
+			if (!figureScrollerEl) return;
+			const delta = ((moveEvent.clientY - startY) / travel) * overflow;
+			figureScrollerEl.scrollTop = Math.min(overflow, Math.max(0, startScroll + delta));
+			syncFigureMinimap();
+		};
+
+		const onUp = () => {
+			figureThumbDragging = false;
+			thumb.releasePointerCapture(event.pointerId);
+			thumb.removeEventListener('pointermove', onMove);
+			thumb.removeEventListener('pointerup', onUp);
+			thumb.removeEventListener('pointercancel', onUp);
+		};
+
+		thumb.addEventListener('pointermove', onMove);
+		thumb.addEventListener('pointerup', onUp);
+		thumb.addEventListener('pointercancel', onUp);
+	}
+
+	function onFigureThumbXPointerDown(event: PointerEvent) {
+		const scroller = figureScrollerEl;
+		if (!scroller || !figureScrollThumbX.visible) return;
+		event.preventDefault();
+		event.stopPropagation();
+		endFigurePan();
+
+		const thumb = event.currentTarget as HTMLElement;
+		const startX = event.clientX;
+		const startScroll = scroller.scrollLeft;
+		const overflow = scroller.scrollWidth - scroller.clientWidth;
+		const trackW = figureScrollTrackWidth();
+		const travel = Math.max(1, trackW - figureScrollThumbX.width);
+
+		figureThumbDragging = true;
+		thumb.setPointerCapture(event.pointerId);
+
+		const onMove = (moveEvent: PointerEvent) => {
+			if (!figureScrollerEl) return;
+			const delta = ((moveEvent.clientX - startX) / travel) * overflow;
+			figureScrollerEl.scrollLeft = Math.min(overflow, Math.max(0, startScroll + delta));
+			syncFigureMinimap();
+		};
+
+		const onUp = () => {
+			figureThumbDragging = false;
+			thumb.releasePointerCapture(event.pointerId);
+			thumb.removeEventListener('pointermove', onMove);
+			thumb.removeEventListener('pointerup', onUp);
+			thumb.removeEventListener('pointercancel', onUp);
+		};
+
+		thumb.addEventListener('pointermove', onMove);
+		thumb.addEventListener('pointerup', onUp);
+		thumb.addEventListener('pointercancel', onUp);
+	}
+
 	function wheelDeltaY(event: WheelEvent) {
 		if (event.deltaMode === 1) return event.deltaY * 16;
 		if (event.deltaMode === 2) return event.deltaY * (scrollerEl?.clientHeight ?? 800);
@@ -498,20 +1518,64 @@
 			return;
 		}
 
+		// Image viewer — scroll the figure; ctrl/meta+wheel zooms.
+		if (figureFill) {
+			if (figureFillMorphing) {
+				event.preventDefault();
+				return;
+			}
+			if (event.ctrlKey || event.metaKey) {
+				event.preventDefault();
+				const deltaY = wheelDeltaY(event);
+				if (deltaY === 0) return;
+				// Continuous zoom toward the cursor (trackpad pinch / ctrl+wheel).
+				const factor = Math.exp(-deltaY * 0.01);
+				setFigureZoomLevel(figureZoom * factor, event.clientX, event.clientY);
+				return;
+			}
+			const deltaY = wheelDeltaY(event);
+			if (deltaY === 0) return;
+			if (figureScrollerEl && !figureScrollerEl.contains(event.target as Node)) {
+				event.preventDefault();
+				figureScrollBy(deltaY);
+			}
+			return;
+		}
+
+		// Just closed a figure — swallow inertia so the case doesn't keep scrolling.
+		if (sheetScrollLocked()) {
+			event.preventDefault();
+			pinSheetScrollLock();
+			return;
+		}
+
 		if (!canDismiss) return;
 
 		const deltaY = wheelDeltaY(event);
+		const scrollTop = scrollerEl.scrollTop;
 
-		// Past the top → fill ring (deltaY < 0).
-		if (!reduceMotion && atScrollTop() && deltaY < 0) {
-			hideCloseHint();
+		// At top (or this tick would cross it) while scrolling up — never rubber-band
+		// above the hero; fold the overshoot into pull-to-dismiss instead.
+		if (deltaY < 0 && scrollTop + deltaY <= 0.5) {
 			event.preventDefault();
+			if (scrollTop > 0) {
+				scrollerEl.scrollTop = 0;
+				updateScrollThumb();
+			}
+			syncTopOverscrollLock();
+			if (reduceMotion) return;
+
+			hideCloseHint();
+			// Already at top → full delta is pull. Crossing zero → only the past-zero part.
+			const pullDelta = scrollTop <= 0.5 ? -deltaY : Math.max(0, -(scrollTop + deltaY));
 			if (rawPull >= PULL_RANGE) {
 				close();
 				return;
 			}
-			paintDismiss(rawPull + -deltaY);
-			scheduleSettle();
+			if (pullDelta > 0) {
+				paintDismiss(rawPull + pullDelta);
+				scheduleSettle();
+			}
 			return;
 		}
 
@@ -526,19 +1590,31 @@
 		}
 
 		// Cursor over the sheet → native scrolling. Outside → drive the scroller.
-		if (scrollerEl.contains(event.target as Node)) return;
+		if (scrollerEl.contains(event.target as Node)) {
+			syncTopOverscrollLock();
+			return;
+		}
 
 		event.preventDefault();
 		const maxScroll = Math.max(0, scrollerEl.scrollHeight - scrollerEl.clientHeight);
 		scrollerEl.scrollTop = Math.min(maxScroll, Math.max(0, scrollerEl.scrollTop + deltaY));
+		syncTopOverscrollLock();
 		updateScrollThumb();
 	}
 
 	function onTouchStart(event: TouchEvent) {
-		if (!canDismiss || closeRequested) return;
+		if (closeRequested) return;
+		if (!canDismiss && !figureFilled) return;
 		touchActive = true;
 		touchLastY = event.touches[0]?.clientY ?? 0;
 		clearTimeout(settleTimer);
+		if (figureFill && event.touches.length >= 2) {
+			endFigurePan();
+			figurePinchDist = touchDistance(event.touches[0], event.touches[1]);
+			figurePinchZoom0 = figureZoom;
+		} else {
+			figurePinchDist = 0;
+		}
 		if (videoEl) void videoEl.play().catch(() => {});
 	}
 
@@ -549,6 +1625,38 @@
 			if (scrollerEl && scrollerEl.scrollTop !== 0) scrollerEl.scrollTop = 0;
 			return;
 		}
+
+		// Image viewer — pinch zooms toward the midpoint; one finger scrolls natively.
+		if (figureFill) {
+			if (figureFillMorphing) {
+				if (event.cancelable) event.preventDefault();
+				return;
+			}
+			if (event.touches.length >= 2) {
+				if (event.cancelable) event.preventDefault();
+				const a = event.touches[0];
+				const b = event.touches[1];
+				if (figurePinchDist <= 0) {
+					figurePinchDist = touchDistance(a, b);
+					figurePinchZoom0 = figureZoom;
+				}
+				if (figurePinchDist > 0) {
+					setFigureZoomLevel(
+						figurePinchZoom0 * (touchDistance(a, b) / figurePinchDist),
+						(a.clientX + b.clientX) / 2,
+						(a.clientY + b.clientY) / 2
+					);
+				}
+			}
+			return;
+		}
+
+		if (sheetScrollLocked()) {
+			if (event.cancelable) event.preventDefault();
+			pinSheetScrollLock();
+			return;
+		}
+
 		if (!canDismiss) return;
 		const y = event.touches[0]?.clientY ?? touchLastY;
 		const dy = y - touchLastY; // >0 finger down → pull to dismiss at top
@@ -557,11 +1665,31 @@
 		if (atScrollTop() && dy > 0) {
 			hideCloseHint();
 			if (event.cancelable) event.preventDefault();
+			syncTopOverscrollLock();
 			if (rawPull >= PULL_RANGE) {
 				close();
 				return;
 			}
 			paintDismiss(rawPull + dy);
+			return;
+		}
+
+		// Crossing the top on touch — clamp before rubber-band can show a gap.
+		if (
+			scrollerEl &&
+			dy > 0 &&
+			scrollerEl.scrollTop > 0 &&
+			scrollerEl.scrollTop < dy + 1
+		) {
+			if (event.cancelable) event.preventDefault();
+			const overshoot = dy - scrollerEl.scrollTop;
+			scrollerEl.scrollTop = 0;
+			syncTopOverscrollLock();
+			updateScrollThumb();
+			if (overshoot > 0) {
+				hideCloseHint();
+				paintDismiss(rawPull + overshoot);
+			}
 			return;
 		}
 
@@ -575,10 +1703,22 @@
 		}
 	}
 
-	function onTouchEnd() {
+	function onTouchEnd(event: TouchEvent) {
+		if (figureFill && event.touches.length >= 2) {
+			figurePinchDist = touchDistance(event.touches[0], event.touches[1]);
+			figurePinchZoom0 = figureZoom;
+			return;
+		}
+		if (figureFill && event.touches.length === 1) {
+			figurePinchDist = 0;
+			touchLastY = event.touches[0].clientY;
+			return;
+		}
 		if (!touchActive) return;
 		touchActive = false;
-		if (!canDismiss || reduceMotion || closeRequested) return;
+		figurePinchDist = 0;
+		if (reduceMotion || closeRequested || figureFill) return;
+		if (!canDismiss) return;
 		if (rawPull > DEAD_ZONE) settleDismiss();
 		else if (rawPull > 0) clearDismiss();
 	}
@@ -745,6 +1885,13 @@
 
 	function close() {
 		if (phase === 'closing' || closeRequested) return;
+		clearTimeout(figureFillTimer);
+		figureFillEpoch += 1;
+		cancelFigureFly();
+		cancelFigureStage();
+		figureFill = null;
+		figureFillMorphing = false;
+		setCaseFigureThumbHidden(null);
 		clearEscapeScroll();
 		closeRequested = true;
 		rawPull = Math.min(rawPull, PULL_RANGE);
@@ -831,8 +1978,13 @@
 		if (epoch !== closeEpoch) return;
 
 		cancelAnimationFrame(closeFrame);
-		chromeAnim?.cancel();
-		chromeAnim = undefined;
+		clearTimeout(figureFillTimer);
+		figureFillEpoch += 1;
+		cancelFigureFly();
+		cancelFigureStage();
+		figureFill = null;
+		figureFillMorphing = false;
+		setCaseFigureThumbHidden(null);
 		stopCoverPaint();
 		// Capture before body overflow unlock / history.back can shift the page.
 		lockPageScrollBriefly();
@@ -869,7 +2021,12 @@
 	}
 
 	function onBackdropClick(event: MouseEvent) {
-		if (event.target === event.currentTarget && canDismiss) dismissWithScrollFirst();
+		if (event.target !== event.currentTarget) return;
+		if (figureFill) {
+			closeFigureFill();
+			return;
+		}
+		if (canDismiss) dismissWithScrollFirst();
 	}
 
 	function isTypingTarget(target: EventTarget | null) {
@@ -906,10 +2063,66 @@
 	function onKeydown(event: KeyboardEvent) {
 		if (!rendered) return;
 
-		if (event.key === 'Escape' && canDismiss) {
-			event.preventDefault();
-			dismissWithScrollFirst();
+		if (event.key === 'Escape') {
+			if (figureFill) {
+				event.preventDefault();
+				closeFigureFill();
+				return;
+			}
+			if (canDismiss) {
+				event.preventDefault();
+				dismissWithScrollFirst();
+			}
 			return;
+		}
+
+		// Image viewer keys — zoom and scroll.
+		if (figureFill && !figureFillMorphing) {
+			if (event.key === '+' || event.key === '=') {
+				event.preventDefault();
+				bumpFigureZoom(1);
+				return;
+			}
+			if (event.key === '-' || event.key === '_') {
+				event.preventDefault();
+				bumpFigureZoom(-1);
+				return;
+			}
+			if (
+				event.key === 'ArrowDown' ||
+				event.key === 'ArrowUp' ||
+				event.key === 'PageDown' ||
+				event.key === 'PageUp' ||
+				event.key === 'Home' ||
+				event.key === 'End' ||
+				event.key === ' '
+			) {
+				event.preventDefault();
+				const page = Math.max(120, Math.round((figureScrollerEl?.clientHeight ?? 600) * 0.85));
+				const line = 48;
+				const down =
+					event.key === 'ArrowDown' ||
+					event.key === 'PageDown' ||
+					event.key === 'End' ||
+					(event.key === ' ' && !event.shiftKey);
+				const step =
+					event.key === 'PageDown' || event.key === 'PageUp' || event.key === ' '
+						? page
+						: event.key === 'Home' || event.key === 'End'
+							? Number.POSITIVE_INFINITY
+							: line;
+				const delta = down ? step : -step;
+				if (event.key === 'Home' && figureScrollerEl) {
+					figureScrollerEl.scrollTop = 0;
+					return;
+				}
+				if (event.key === 'End' && figureScrollerEl) {
+					figureScrollerEl.scrollTop = figureScrollerEl.scrollHeight;
+					return;
+				}
+				figureScrollBy(delta);
+				return;
+			}
 		}
 
 		if (!canDismiss || !scrollerEl || morphing || closeRequested || escapeScrollPending) return;
@@ -954,11 +2167,15 @@
 	}
 
 	function onResize() {
-		if (!canDismiss || !cardEl || !expanded) return;
+		if ((!canDismiss && !figureFilled) || !cardEl || !expanded) return;
 		openRect = finalRect();
 		sheetH = openRect.height;
 		applyChrome(cardEl, openRect, false);
 		updateScrollThumb();
+		if (figureFill) {
+			syncFigureCentering();
+			syncFigureMinimap();
+		}
 	}
 
 	// Shallow history: SvelteKit stores the case in `page.state` (Back/Forward).
@@ -1025,6 +2242,7 @@
 				id = value;
 				rendered = true;
 				expanded = false;
+				expandedFigures = {};
 			}
 		});
 		const unsubOrigin = projectOrigin.subscribe((value) => {
@@ -1155,9 +2373,15 @@
 
 		const scroller = scrollerEl;
 		const passive: AddEventListenerOptions = { passive: true };
-		const onScroll = () => updateScrollThumb();
+		const onScroll = () => {
+			// Momentum can still try to show a gap above the hero — pin hard to 0.
+			if (scroller.scrollTop < 0) scroller.scrollTop = 0;
+			syncTopOverscrollLock();
+			updateScrollThumb();
+		};
 
 		scroller.addEventListener('scroll', onScroll, passive);
+		syncTopOverscrollLock();
 		updateScrollThumb();
 
 		const ro =
@@ -1174,8 +2398,8 @@
 
 	$effect(() => {
 		if (!browser || !scrollerEl || !rendered) return;
-		// Keep listening through the close morph so residual wheel input stays blocked.
-		if (phase !== 'closing' && (!expanded || !canDismiss)) return;
+		// Keep listening through close morph, and while a figure fill is open.
+		if (phase !== 'closing' && (!expanded || (!canDismiss && !figureFilled))) return;
 
 		const scroller = scrollerEl;
 		const passive: AddEventListenerOptions = { passive: true };
@@ -1186,25 +2410,29 @@
 			if ((closeRequested || phase === 'closing') && scroller.scrollTop !== 0) {
 				scroller.scrollTop = 0;
 			}
+			pinSheetScrollLock();
 		};
 
 		window.addEventListener('wheel', onWheel, wheelOpts);
 		scroller.addEventListener('scroll', lockScroll, passive);
 
+		// Also listen on the card so figure-fill (covers the scroller) still gets touch.
+		const touchRoot = cardEl ?? scroller;
+
 		if (!reduceMotion && phase !== 'closing') {
-			scroller.addEventListener('touchstart', onTouchStart, passive);
-			scroller.addEventListener('touchmove', onTouchMove, touchMoveOpts);
-			scroller.addEventListener('touchend', onTouchEnd, passive);
-			scroller.addEventListener('touchcancel', onTouchEnd, passive);
+			touchRoot.addEventListener('touchstart', onTouchStart, passive);
+			touchRoot.addEventListener('touchmove', onTouchMove, touchMoveOpts);
+			touchRoot.addEventListener('touchend', onTouchEnd, passive);
+			touchRoot.addEventListener('touchcancel', onTouchEnd, passive);
 		}
 
 		return () => {
 			window.removeEventListener('wheel', onWheel, wheelOpts);
 			scroller.removeEventListener('scroll', lockScroll, passive);
-			scroller.removeEventListener('touchstart', onTouchStart, passive);
-			scroller.removeEventListener('touchmove', onTouchMove, touchMoveOpts);
-			scroller.removeEventListener('touchend', onTouchEnd, passive);
-			scroller.removeEventListener('touchcancel', onTouchEnd, passive);
+			touchRoot.removeEventListener('touchstart', onTouchStart, passive);
+			touchRoot.removeEventListener('touchmove', onTouchMove, touchMoveOpts);
+			touchRoot.removeEventListener('touchend', onTouchEnd, passive);
+			touchRoot.removeEventListener('touchcancel', onTouchEnd, passive);
 		};
 	});
 </script>
@@ -1230,6 +2458,8 @@
 			class:dismissing={isDismissing}
 			class:closing={isClosing}
 			class:morphing
+			class:figure-filled={figureFilled}
+			class:figure-morphing={figureFillMorphing}
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="project-card-title"
@@ -1245,7 +2475,12 @@
 
 			<div
 				class="scroll-rail"
-				class:visible={scrollThumb.visible && contentVisible && !isClosing && !morphing && !isDismissing}
+				class:visible={scrollThumb.visible &&
+					contentVisible &&
+					!figureFilled &&
+					!isClosing &&
+					!morphing &&
+					!isDismissing}
 				aria-hidden="true"
 			>
 				<button
@@ -1294,23 +2529,99 @@
 
 					<div class="caption">
 						<div class="caption-inner">
-							<h2 id="project-card-title">{overlayHeadline}</h2>
+							<h2 id="project-card-title">{sheetTitle}</h2>
 							<p>{project.description}</p>
 						</div>
 					</div>
 				</section>
 
-				<section class="details">
+				<section class="details" class:coming-soon={project.comingSoon}>
 					<div class="details-inner">
-						{#if project.caseStudy?.length}
+						<dl class="meta">
+							{#if project.role}
+								<div>
+									<dt>{project.role.includes(',') ? 'Roles' : 'Role'}</dt>
+									<dd>{project.role}</dd>
+								</div>
+							{/if}
+							<div>
+								<dt>Services</dt>
+								<dd>{project.services}</dd>
+							</div>
+							<div>
+								<dt>Year</dt>
+								<dd>{project.year}</dd>
+							</div>
+							{#if project.link}
+								<div>
+									<dt>Link</dt>
+									<dd>
+										<a href={project.link.href} target="_blank" rel="noopener noreferrer">
+											{project.link.label}
+										</a>
+									</dd>
+								</div>
+							{/if}
+						</dl>
+
+						{#if project.comingSoon}
+							<div class="coming-soon-panel">
+								<h3 class="coming-soon-title">Coming soon</h3>
+								<p class="coming-soon-copy">
+									A fuller write-up of this project is on the way. The overview above covers
+									the gist for now.
+								</p>
+							</div>
+						{:else if project.caseStudy?.length}
 							{#each project.caseStudy as block, index (`${block.type}-${index}`)}
 								{#if block.type === 'heading'}
 									<h3 class="case-heading">{block.text}</h3>
 								{:else if block.type === 'paragraph'}
 									<p class="case-copy">{block.text}</p>
 								{:else if block.type === 'figure'}
-									<figure class="case-figure ratio-{block.ratio ?? 'wide'}">
-										<div class="case-ph" aria-hidden="true"></div>
+									{@const figKey = `fig-${index}`}
+									<figure
+										class="case-figure ratio-{block.ratio ?? 'wide'}"
+										class:expandable={Boolean(block.expand)}
+										class:expanded={!block.expand || expandedFigures[figKey]}
+										class:peek={Boolean(block.peek)}
+										use:figureExpandOnView={block.expand ? figKey : ''}
+									>
+										<button
+											type="button"
+											class="case-ph"
+											class:has-image={Boolean(block.src)}
+											class:has-backdrop={Boolean(block.background)}
+											class:framed={Boolean(block.framed || block.background)}
+											class:peek={Boolean(block.peek)}
+											class:is-figure-open={figureOpenKey === figKey}
+											data-figure-key={figKey}
+											aria-label={block.caption
+												? `Open figure: ${block.caption}`
+												: 'Open figure'}
+											style:background={block.background}
+											onclick={(event) =>
+												openFigureFill(event, {
+													key: figKey,
+													ratio: block.ratio ?? 'wide',
+													caption: block.caption,
+													src: block.src,
+													background: block.background,
+													framed: Boolean(block.framed || block.background),
+													peek: Boolean(block.peek)
+												})}
+										>
+											{#if block.src}
+												<img
+													src={block.src}
+													alt=""
+													width="1024"
+													height="665"
+													decoding="async"
+													draggable="false"
+												/>
+											{/if}
+										</button>
 										{#if block.caption}
 											<figcaption>{block.caption}</figcaption>
 										{/if}
@@ -1323,8 +2634,46 @@
 										{#each Array.from({ length: block.count }, (_, i) => i) as figIndex (
 											figIndex
 										)}
-											<figure class="case-figure ratio-{block.ratio ?? 'square'}">
-												<div class="case-ph" aria-hidden="true"></div>
+											{@const figFramed = Boolean(
+												(Array.isArray(block.framed)
+													? block.framed[figIndex]
+													: block.framed) || block.backgrounds?.[figIndex]
+											)}
+											{@const figPeek = Boolean(
+												Array.isArray(block.peek) ? block.peek[figIndex] : block.peek
+											)}
+											<figure
+												class="case-figure ratio-{block.ratio ?? 'square'}"
+												class:peek={figPeek}
+											>
+												<button
+													type="button"
+													class="case-ph"
+													class:has-image={Boolean(block.srcs?.[figIndex])}
+													class:has-backdrop={Boolean(block.backgrounds?.[figIndex])}
+													class:framed={figFramed}
+													class:peek={figPeek}
+													class:is-figure-open={figureOpenKey === `figs-${index}-${figIndex}`}
+													data-figure-key="figs-{index}-{figIndex}"
+													aria-label={block.captions?.[figIndex]
+														? `Open figure: ${block.captions[figIndex]}`
+														: 'Open figure'}
+													style:background={block.backgrounds?.[figIndex]}
+													onclick={(event) =>
+														openFigureFill(event, {
+															key: `figs-${index}-${figIndex}`,
+															ratio: block.ratio ?? 'square',
+															caption: block.captions?.[figIndex],
+															src: block.srcs?.[figIndex],
+															background: block.backgrounds?.[figIndex],
+															framed: figFramed,
+															peek: figPeek
+														})}
+												>
+													{#if block.srcs?.[figIndex]}
+														<img src={block.srcs[figIndex]} alt="" draggable="false" />
+													{/if}
+												</button>
 												{#if block.captions?.[figIndex]}
 													<figcaption>{block.captions[figIndex]}</figcaption>
 												{/if}
@@ -1349,36 +2698,184 @@
 								</div>
 							{/if}
 						{/if}
-
-						<dl class="meta">
-							{#if project.role}
-								<div>
-									<dt>Role</dt>
-									<dd>{project.role}</dd>
-								</div>
-							{/if}
-							<div>
-								<dt>Services</dt>
-								<dd>{project.services}</dd>
-							</div>
-							<div>
-								<dt>Year</dt>
-								<dd>{project.year}</dd>
-							</div>
-							{#if project.link}
-								<div>
-									<dt>Link</dt>
-									<dd>
-										<a href={project.link.href} target="_blank" rel="noopener noreferrer">
-											{project.link.label}
-										</a>
-									</dd>
-								</div>
-							{/if}
-						</dl>
 					</div>
 				</section>
 			</div>
+
+			{#if figureFill}
+				<div
+					bind:this={figureFillEl}
+					class="figure-fill"
+					class:morphing={figureFillMorphing}
+					class:peek={Boolean(figureFill.peek)}
+					class:light={figureFillIsLight(figureFill.background)}
+					class:has-backdrop={Boolean(figureFill.background)}
+					class:framed={Boolean(figureFill.framed || figureFill.peek)}
+					role="dialog"
+					aria-modal="true"
+					tabindex="-1"
+					aria-label={figureFill.caption ?? 'Figure'}
+					style:--figure-zoom={figureZoom}
+					style:background={figureFill.background}
+				>
+					<div class="figure-stage" bind:this={figureStageEl} aria-hidden="true"></div>
+					{#if figureFill.src}
+						<div class="figure-fly-clip" bind:this={figureFlyClipEl} aria-hidden="true">
+							<img
+								bind:this={figureFlyEl}
+								class="figure-fly-image"
+								src={figureFill.src}
+								alt=""
+								draggable="false"
+							/>
+						</div>
+					{/if}
+					<div class="figure-chrome" class:dimmed={figureFillMorphing}>
+						<button
+							type="button"
+							class="figure-btn figure-close"
+							aria-label="Close image"
+							onclick={() => closeFigureFill()}
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<path
+									d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.75"
+									stroke-linecap="round"
+								/>
+							</svg>
+						</button>
+						{#if figureMinimap.visible}
+							<button
+								type="button"
+								class="figure-minimap"
+								aria-label="Navigate canvas"
+								onpointerdown={onFigureMinimapPointerDown}
+								onpointermove={onFigureMinimapPointerMove}
+								onpointerup={onFigureMinimapPointerUp}
+								onpointercancel={onFigureMinimapPointerUp}
+							>
+								<span
+									class="figure-minimap-canvas"
+									style:aspect-ratio={figureMinimap.aspect}
+									aria-hidden="true"
+								>
+									<span
+										class="figure-minimap-image"
+										style:left="{figureMinimap.image.left}%"
+										style:top="{figureMinimap.image.top}%"
+										style:width="{figureMinimap.image.width}%"
+										style:height="{figureMinimap.image.height}%"
+									></span>
+									<span
+										class="figure-minimap-view"
+										style:left="{figureMinimap.view.left}%"
+										style:top="{figureMinimap.view.top}%"
+										style:width="{figureMinimap.view.width}%"
+										style:height="{figureMinimap.view.height}%"
+									></span>
+								</span>
+							</button>
+						{/if}
+						<div class="figure-zoom" role="group" aria-label="Zoom">
+							<button
+								type="button"
+								class="figure-btn"
+								aria-label="Zoom out"
+								disabled={!canFigureZoomOut}
+								onclick={() => bumpFigureZoom(-1)}
+							>
+								<svg viewBox="0 0 24 24" aria-hidden="true">
+									<path
+										d="M6 12h12"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.75"
+										stroke-linecap="round"
+									/>
+								</svg>
+							</button>
+							<button
+								type="button"
+								class="figure-btn"
+								aria-label="Zoom in"
+								disabled={!canFigureZoomIn}
+								onclick={() => bumpFigureZoom(1)}
+							>
+								<svg viewBox="0 0 24 24" aria-hidden="true">
+									<path
+										d="M12 6v12M6 12h12"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.75"
+										stroke-linecap="round"
+									/>
+								</svg>
+							</button>
+						</div>
+						<div
+							class="scroll-rail figure-scroll-rail-y"
+							class:visible={figureScrollThumbY.visible && !figureFillMorphing}
+							aria-hidden="true"
+						>
+							<button
+								type="button"
+								class="scroll-thumb"
+								class:dragging={figureThumbDragging}
+								tabindex="-1"
+								style:transform="translate3d(0, {figureScrollThumbY.top}px, 0)"
+								style:height="{figureScrollThumbY.height}px"
+								aria-label="Scroll image vertically"
+								onpointerdown={onFigureThumbYPointerDown}
+							></button>
+						</div>
+						<div
+							bind:this={figureScrollRailXEl}
+							class="scroll-rail figure-scroll-rail-x"
+							class:visible={figureScrollThumbX.visible && !figureFillMorphing}
+							class:has-minimap={figureMinimap.visible}
+							aria-hidden="true"
+						>
+							<button
+								type="button"
+								class="scroll-thumb figure-scroll-thumb-x"
+								class:dragging={figureThumbDragging}
+								tabindex="-1"
+								style:transform="translate3d({figureScrollThumbX.left}px, 0, 0)"
+								style:width="{figureScrollThumbX.width}px"
+								aria-label="Scroll image horizontally"
+								onpointerdown={onFigureThumbXPointerDown}
+							></button>
+						</div>
+					</div>
+					<div
+						class="figure-scroll"
+						bind:this={figureScrollerEl}
+						onscroll={syncFigureMinimap}
+						onpointerdown={onFigurePanPointerDown}
+						onpointermove={onFigurePanPointerMove}
+						onpointerup={onFigurePanPointerUp}
+						onpointercancel={onFigurePanPointerUp}
+					>
+						<div class="figure-page">
+							{#if figureFill.src}
+								<img
+									class="figure-image"
+									src={figureFill.src}
+									alt={figureFill.caption ?? ''}
+									decoding="async"
+									draggable="false"
+									onload={onFigureImageLoad}
+								/>
+							{:else}
+								<div class="case-ph figure-image" aria-hidden="true"></div>
+							{/if}
+						</div>
+					</div>
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -1412,6 +2909,300 @@
 
 	.card.closing {
 		background: #111;
+	}
+
+	/* Full-window image viewer. */
+	.figure-fill {
+		/* Tuck chrome into the rounded corners (matches ~1.75rem sheet radius). */
+		--figure-chrome-inset: 0.4rem;
+		position: absolute;
+		z-index: 12;
+		overflow: hidden;
+		/* Same fill as framed case thumbs; inline style wins when a custom bg is set. */
+		background: #111;
+		outline: none;
+		touch-action: none;
+	}
+
+	.figure-fill.framed {
+		background: color-mix(in srgb, var(--color-text) 10%, var(--color-bg));
+	}
+
+	.figure-stage {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		opacity: 0;
+		pointer-events: none;
+		background: inherit;
+	}
+
+	/* Clip window + bitmap; peek keeps the oversized top-left crop during the zoom. */
+	.figure-fly-clip {
+		position: absolute;
+		z-index: 2;
+		overflow: hidden;
+		pointer-events: none;
+		visibility: hidden;
+	}
+
+	.figure-fly-image {
+		position: absolute;
+		display: block;
+		max-width: none;
+		object-fit: fill;
+		pointer-events: none;
+		user-select: none;
+	}
+
+	.figure-chrome {
+		position: absolute;
+		inset: 0;
+		z-index: 3;
+		pointer-events: none;
+		opacity: 1;
+		transition: opacity 160ms ease;
+	}
+
+	.figure-chrome.dimmed {
+		opacity: 0;
+	}
+
+	.figure-btn {
+		appearance: none;
+		pointer-events: auto;
+		display: grid;
+		place-items: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		border-radius: 999px;
+		background: rgb(20 20 20 / 0.72);
+		color: #fff;
+		cursor: pointer;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+		box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+		transition:
+			background-color 140ms ease,
+			opacity 140ms ease,
+			transform 140ms ease;
+	}
+
+	.figure-btn svg {
+		display: block;
+		width: 1.15rem;
+		height: 1.15rem;
+	}
+
+	.figure-btn:hover:not(:disabled) {
+		background: rgb(20 20 20 / 0.88);
+	}
+
+	.figure-btn:active:not(:disabled) {
+		transform: scale(0.96);
+	}
+
+	.figure-btn:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
+
+	.figure-btn:focus-visible {
+		outline: 2px solid #fff;
+		outline-offset: 2px;
+	}
+
+	.figure-close {
+		position: absolute;
+		z-index: 5;
+		top: var(--figure-chrome-inset);
+		right: var(--figure-chrome-inset);
+		background: rgb(20 20 20 / 0.2);
+		backdrop-filter: blur(80px);
+		-webkit-backdrop-filter: blur(80px);
+		box-shadow: none;
+	}
+
+	.figure-close:hover:not(:disabled) {
+		background: rgb(20 20 20 / 0.35);
+	}
+
+	.figure-minimap {
+		appearance: none;
+		pointer-events: auto;
+		position: absolute;
+		z-index: 5;
+		left: var(--figure-chrome-inset);
+		bottom: var(--figure-chrome-inset);
+		margin: 0;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		cursor: grab;
+		box-shadow: none;
+	}
+
+	.figure-minimap:active {
+		cursor: grabbing;
+	}
+
+	/* Canvas = max zoom-out world; image fixed; view outline moves/resizes. */
+	.figure-minimap-canvas {
+		position: relative;
+		display: block;
+		width: 5.5rem;
+		aspect-ratio: 16 / 10;
+		overflow: hidden;
+		/* Follow the sheet corner on the bottom-left; keep other corners tight. */
+		border-radius: 0.45rem;
+		border-bottom-left-radius: calc(1.75rem - var(--figure-chrome-inset));
+		background: color-mix(in srgb, var(--color-text) 28%, var(--color-bg));
+	}
+
+	.figure-minimap-image {
+		position: absolute;
+		box-sizing: border-box;
+		border-radius: 0.12rem;
+		background: #111;
+		pointer-events: none;
+	}
+
+	.figure-minimap-view {
+		position: absolute;
+		box-sizing: border-box;
+		border: 1.5px solid #fff;
+		border-radius: 0.15rem;
+		background: rgb(255 255 255 / 0.12);
+		box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
+		pointer-events: none;
+	}
+
+	.figure-zoom {
+		position: absolute;
+		z-index: 5;
+		right: var(--figure-chrome-inset);
+		bottom: var(--figure-chrome-inset);
+		display: flex;
+		gap: 0.45rem;
+		pointer-events: none;
+	}
+
+	.figure-scroll {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		overflow: auto;
+		overscroll-behavior: contain;
+		border-radius: inherit;
+		-webkit-overflow-scrolling: touch;
+		container-type: size;
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
+		scrollbar-width: none;
+	}
+
+	.figure-fill.morphing .figure-scroll {
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	/* Hide the case thumb while its shared-element flight / viewer is open. */
+	.case-ph.is-figure-open,
+	.case-ph.is-figure-open img {
+		opacity: 0 !important;
+	}
+
+	.figure-scroll::-webkit-scrollbar {
+		display: none;
+		width: 0;
+		height: 0;
+	}
+
+	.figure-scroll.is-panning {
+		cursor: grabbing;
+	}
+
+	/* Beat base `.scroll-rail { top/bottom }` so X stays on the bottom edge. */
+	.figure-fill .figure-scroll-rail-y {
+		top: 52px;
+		right: 12px;
+		bottom: 52px;
+		left: auto;
+		width: 4px;
+		height: auto;
+		z-index: 4;
+	}
+
+	.figure-fill .figure-scroll-rail-x {
+		/* Clear zoom (+/−) on the right; widen left clearance when minimap is present. */
+		--figure-scroll-x-gap: 0.75rem;
+		--figure-scroll-x-zoom: calc(2.5rem + 0.45rem + 2.5rem);
+		top: auto;
+		right: calc(var(--figure-chrome-inset) + var(--figure-scroll-x-zoom) + var(--figure-scroll-x-gap));
+		bottom: 12px;
+		left: calc(var(--figure-chrome-inset) + var(--figure-scroll-x-gap));
+		width: auto;
+		height: 4px;
+		z-index: 4;
+	}
+
+	.figure-fill .figure-scroll-rail-x.has-minimap {
+		left: calc(var(--figure-chrome-inset) + 5.5rem + var(--figure-scroll-x-gap));
+	}
+
+	.figure-fill .figure-scroll-thumb-x {
+		top: 0;
+		left: 0;
+		width: 36px;
+		height: 4px;
+	}
+
+	/* Mid grey + transparency reads on both light and dark image areas. */
+	.figure-fill .scroll-thumb {
+		background: rgb(120 120 120 / 0.45);
+		box-shadow: 0 0 0 1px rgb(255 255 255 / 0.18);
+	}
+
+	.figure-fill .scroll-thumb:hover,
+	.figure-fill .scroll-thumb.dragging {
+		background: rgb(120 120 120 / 0.65);
+		box-shadow: 0 0 0 1px rgb(255 255 255 / 0.28);
+	}
+
+	/*
+	 * Content-box so canvas padding expands the panable world (zoom-out-past-fit).
+	 * Avoid flex-centering — it fights pinch-zoom anchoring.
+	 */
+	.figure-page {
+		box-sizing: content-box;
+		width: max-content;
+		height: max-content;
+	}
+
+	.figure-fill .case-ph.figure-image {
+		width: calc((100cqw - 40px) * var(--figure-zoom, 1));
+		aspect-ratio: 16 / 10;
+		border-radius: 8px;
+	}
+
+	.figure-image {
+		display: block;
+		/* Zoom 1 = viewport minus 20px inset on each side. */
+		width: calc((100cqw - 40px) * var(--figure-zoom, 1));
+		max-width: none;
+		height: auto;
+		border-radius: 8px;
+		background: transparent;
+		pointer-events: none;
+		user-select: none;
+	}
+
+	.card.figure-filled .scroller {
+		pointer-events: none;
 	}
 
 	.scroller {
@@ -1704,6 +3495,30 @@
 		box-sizing: border-box;
 	}
 
+	.details.coming-soon .details-inner {
+		padding-bottom: clamp(2.5rem, 6vw, 4rem);
+	}
+
+	.coming-soon-panel {
+		margin: 0 0 2.25rem;
+	}
+
+	.coming-soon-title {
+		margin: 0 0 0.65rem;
+		font-size: clamp(1.15rem, 2vw, 1.35rem);
+		font-weight: var(--font-weight);
+		line-height: 1.25;
+		color: var(--color-text);
+	}
+
+	.coming-soon-copy {
+		margin: 0;
+		font-size: 1rem;
+		line-height: 1.55;
+		color: var(--color-muted);
+		max-width: 34rem;
+	}
+
 	@media (max-width: 800px) {
 		.caption-inner,
 		.details-inner {
@@ -1728,11 +3543,14 @@
 		color: var(--color-text);
 	}
 
-	.case-heading:first-child {
+	.case-heading:first-child,
+	.meta + .case-heading {
 		margin-top: 0;
 	}
 
 	.case-figure {
+		width: 100%;
+		max-width: var(--span-4);
 		margin: 1.5rem 0 0.35rem;
 		padding: 0;
 		content-visibility: auto;
@@ -1742,8 +3560,65 @@
 	.case-ph {
 		display: block;
 		width: 100%;
+		max-width: var(--span-4);
 		border-radius: 1rem;
 		background: color-mix(in srgb, var(--color-text) 10%, var(--color-bg));
+		overflow: hidden;
+	}
+
+	.case-ph.has-image {
+		background: color-mix(in srgb, var(--color-text) 6%, var(--color-bg));
+	}
+
+	.case-ph img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: top center;
+	}
+
+	.case-ph.framed {
+		background: color-mix(in srgb, var(--color-text) 10%, var(--color-bg));
+	}
+
+	.case-ph.framed:not(.peek),
+	.case-ph.has-backdrop:not(.peek) {
+		padding: 0.85rem;
+		box-sizing: border-box;
+	}
+
+	.case-ph.framed:not(.peek) img,
+	.case-ph.has-backdrop:not(.peek) img {
+		object-fit: contain;
+		object-position: center;
+		border-radius: 8px;
+	}
+
+	button.case-ph {
+		appearance: none;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		font: inherit;
+		color: inherit;
+		cursor: zoom-in;
+		transition:
+			transform 180ms ease,
+			filter 180ms ease;
+	}
+
+	button.case-ph:hover:not(.has-image) {
+		filter: brightness(0.97);
+	}
+
+	button.case-ph.has-image:hover img {
+		opacity: 0.96;
+	}
+
+	button.case-ph:focus-visible {
+		outline: 2px solid var(--color-accent, #1a73e8);
+		outline-offset: 3px;
 	}
 
 	.case-figure.ratio-ultrawide .case-ph {
@@ -1762,8 +3637,41 @@
 		aspect-ratio: 4 / 5;
 	}
 
+	/* Start a bit cropped, then grow to reveal more of the shot. */
+	.case-figure.expandable .case-ph {
+		aspect-ratio: 1.72 / 1;
+		transition: aspect-ratio 1100ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.case-figure.expandable.expanded .case-ph {
+		aspect-ratio: 1.42 / 1;
+	}
+
+	.case-figure.expandable:not(.peek):not(.expanded) .case-ph.framed img,
+	.case-figure.expandable:not(.peek):not(.expanded) .case-ph.has-backdrop img {
+		object-fit: cover;
+		object-position: top center;
+	}
+
+	/* Full-res peek — pad top/left, clip bottom/right; image wider than the 4-col frame. */
+	.case-ph.peek {
+		padding: 1rem 0 0 1rem;
+		overflow: hidden;
+		box-sizing: border-box;
+	}
+
+	.case-ph.peek img {
+		width: calc(var(--span-4) * 1.55);
+		max-width: none;
+		height: auto;
+		object-fit: cover;
+		object-position: top left;
+		border-radius: 8px 0 0 0;
+		flex-shrink: 0;
+	}
+
 	.case-figure figcaption {
-		margin: 0.55rem 0 0;
+		margin: 0.55rem 0 1.25rem;
 		font-size: 0.85rem;
 		line-height: 1.4;
 		color: var(--color-muted);
@@ -1771,26 +3679,18 @@
 
 	.case-figures {
 		display: grid;
-		gap: 0.85rem;
+		grid-template-columns: minmax(0, var(--span-4));
+		justify-content: start;
+		gap: 1.5rem;
+		width: 100%;
+		max-width: var(--span-4);
 		margin: 1.5rem 0 0.35rem;
 	}
 
-	.case-figures.count-2 {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
-
-	.case-figures.count-3 {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-	}
-
 	.case-figures .case-figure {
+		width: 100%;
+		max-width: none;
 		margin: 0;
-	}
-
-	@media (max-width: 800px) {
-		.case-figures.count-3 {
-			grid-template-columns: 1fr;
-		}
 	}
 
 	.highlights {
@@ -1823,14 +3723,20 @@
 	.meta {
 		display: grid;
 		gap: 0.55rem;
-		margin: 1.75rem 0 0;
+		margin: 0 0 2.75rem;
+		padding-bottom: 2rem;
+		border-bottom: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
 	}
 
 	.meta div {
 		display: grid;
-		grid-template-columns: 6.5rem 1fr;
-		gap: 0.75rem;
+		grid-template-columns: 6.5rem minmax(0, 1fr);
+		gap: 0.75rem 1.25rem;
 		align-items: baseline;
+	}
+
+	.details.coming-soon .meta {
+		margin-bottom: 2rem;
 	}
 
 	dt {
@@ -1865,6 +3771,10 @@
 		transition:
 			opacity 180ms cubic-bezier(0.22, 1, 0.36, 1),
 			transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.card.figure-filled > .dismiss-ring {
+		visibility: hidden;
 	}
 
 	.dismiss-ring.active {
@@ -1902,7 +3812,8 @@
 		.caption,
 		.details,
 		.dismiss-ring,
-		.close-hint {
+		.close-hint,
+		.figure-fill {
 			transition: none !important;
 			animation: none !important;
 		}
