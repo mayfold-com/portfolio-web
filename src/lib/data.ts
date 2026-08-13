@@ -2,9 +2,9 @@ export const profile = {
 	name: 'Naim Chayata',
 	location: 'Utrecht, The Netherlands',
 	/** Two-line hero. Soft break is intentional. */
-	title: 'Hi. I’m Naim, a designer\nwho loves to build',
+	title: 'Hi, I’m Naim.\nA design leader who likes to stay close to the work.',
 	subline:
-		'I build products from Utrecht. Right now that is Mayfold, helping fashion brands make photos that don’t look generated. Before that I spent almost seven years at Adyen, last as UX Manager.',
+		'I spent seven years at Adyen, moving from hands-on product design to leading designers, writers and researchers across its merchant, developer and checkout experiences. These days, I build new products through Mayfold.',
 	email: null as string | null,
 	linkedin: 'https://www.linkedin.com/in/naimchayata/'
 };
@@ -19,7 +19,19 @@ export const navItems = [
 export type CardSize = 'tall' | 'mid' | 'short';
 
 /** Placeholder media ratio for mock case-study figures. */
-export type CaseFigureRatio = 'wide' | 'square' | 'tall' | 'ultrawide';
+export type CaseFigureRatio = 'wide' | 'square' | 'tall' | 'ultrawide' | 'strip';
+
+export type CaseStudyEmbed = 'menu' | 'mess' | 'objects' | 'templates';
+
+/** One bar in the role timeline. Dates are 'YYYY-MM'. */
+export type CaseTimelineRole = {
+	role: string;
+	note?: string;
+	start: string;
+	end: string;
+	/** Held alongside another title instead of after it. */
+	concurrent?: boolean;
+};
 
 export type CaseStudyBlock =
 	| { type: 'heading'; text: string }
@@ -37,6 +49,10 @@ export type CaseStudyBlock =
 			peek?: boolean;
 			/** Start cropped at the bottom, then expand when scrolled into view. */
 			expand?: boolean;
+			/** Show the image centered at this fraction of the frame (e.g. 0.5). */
+			scale?: number;
+			/** Tight framed inset; image spans the padded width, full photo visible. */
+			fill?: boolean;
 	  }
 	| {
 			type: 'figures';
@@ -48,7 +64,16 @@ export type CaseStudyBlock =
 			framed?: boolean | boolean[];
 			/** Full-res peek per figure: pad top/left, clip bottom/right. */
 			peek?: boolean | boolean[];
-	  };
+	  }
+	| {
+			type: 'embed';
+			embed: CaseStudyEmbed;
+			caption?: string;
+	  }
+	| { type: 'list'; title: string; items: string[] }
+	| { type: 'qa'; q: string; a: string | string[] }
+	| { type: 'timeline'; roles: CaseTimelineRole[] }
+	| { type: 'logos'; items: { src: string; alt: string }[] };
 
 export type WorkProject = {
 	id: string;
@@ -64,6 +89,8 @@ export type WorkProject = {
 	services: string;
 	year: string;
 	role?: string;
+	/** Overrides for the sheet meta labels (e.g. “Last role” instead of “Role”). */
+	metaLabels?: { role?: string; services?: string; year?: string };
 	/** Short mock highlights for the project overlay */
 	highlights?: string[];
 	link?: { label: string; href: string };
@@ -81,117 +108,162 @@ export const workProjects: WorkProject[] = [
 	{
 		id: 'adyen',
 		title: 'Adyen',
-		meta: 'Merchant platform — 2018–2025',
+		meta: 'UX leadership — 2018–2025',
 		description:
-			'Almost seven years at Adyen. I touched almost all areas of our merchant-facing products and most of our internal tooling.',
+			'Over seven years, I went from designing the foundations of Adyen’s merchant platform to leading teams across its merchant, developer and checkout experiences.',
 		body: [
-			'Almost seven years at Adyen.',
-			'I touched almost all areas of our merchant-facing products and most of our internal tooling.'
+			'Almost seven years at Adyen. I left as UX Manager, leading teams across the merchant, developer and checkout experiences.',
+			'I joined as a designer improving one part of the product. I left responsible for the people shaping several parts of it.'
 		],
 		caseStudy: [
 			{
-				type: 'paragraph',
-				text: 'I spent almost seven years at Adyen on our merchant-facing products. I touched almost all of them, and most of our internal tooling. The thread through that time was structure: how teams built UI, how merchants moved through the product, and how pages stayed consistent as we grew.'
+				type: 'timeline',
+				roles: [
+					{
+						role: 'Product Designer',
+						start: '2018-06',
+						end: '2019-07'
+					},
+					{
+						role: 'Principal Product Designer',
+						start: '2019-07',
+						end: '2021-06'
+					},
+					{
+						role: 'Design System Lead',
+						start: '2018-06',
+						end: '2021-06',
+						concurrent: true
+					},
+					{
+						role: 'Engineering Team Lead',
+						start: '2021-06',
+						end: '2022-09'
+					},
+					{
+						role: 'Product Design Manager',
+						start: '2022-09',
+						end: '2024-01'
+					},
+					{
+						role: 'UX Manager',
+						start: '2024-01',
+						end: '2025-05'
+					}
+				]
 			},
 			{
 				type: 'paragraph',
-				text: 'The product grew faster than its structure. Teams shipped new pages every week. The top navigation filled up until it could not hold another item. Create flows often sat alone in the menu, away from their lists. Opening a record meant a side panel in one place, a modal in another, a full page or a new tab somewhere else. Merchants had to learn each area from scratch.'
+				text: 'I joined Adyen in 2018, when fewer than ten designers worked alongside roughly 300 engineers. Its merchant platform was already used by many of the world’s largest companies, but much of it had been built before designers joined the company. There was powerful technology underneath it, but the experience did not always make that power easy to understand or use.'
 			},
 			{
 				type: 'heading',
-				text: 'Design system'
+				text: 'Building shared foundations'
 			},
 			{
 				type: 'paragraph',
-				text: 'In my first week the design system was a Sketch sticker sheet and a CSS file. Almost no component states. I owned the move to Adyen’s first full design system, with docs next to it. The hard part was not the Figma file. It was making the shared path easier than building something custom.'
+				text: 'One of the first problems I took on was the design system. An early style guide had brought some consistency to basic components, but it had no clear ownership or plan for how it should grow. Many states, behaviours and larger patterns were still missing.'
 			},
 			{
-				type: 'figures',
-				count: 2,
-				ratio: 'wide',
-				captions: ['Component example in Figma', 'Design system docs'],
-				srcs: [
-					'/media/adyen-design-system-figma.png',
-					'/media/adyen-design-system-docs.png'
-				],
-				framed: [true, true],
-				peek: [false, true]
+				type: 'paragraph',
+				text: 'Working with designers and frontend engineers, I helped turn it into a documented system that teams could use in production. The work went beyond buttons and form fields. It included navigation, account structures and the recurring patterns behind list, detail and configuration pages.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A design system only works when it makes shipping easier. We spent less time persuading teams to adopt it and more time making it useful enough that they wanted to.'
 			},
 			{
 				type: 'heading',
-				text: 'Navigation and structure'
+				text: 'Designing for enterprise scale'
 			},
 			{
 				type: 'paragraph',
-				text: 'We replaced the top bar with a vertical menu with groups. We rebuilt account data and multi-account flows, and we localized the product into French, German, Brazilian Portuguese, Japanese, and Chinese. The new navigation did not land in one release. Old pages stayed on old tech for years. We migrated them while the product kept shipping.'
-			},
-			{
-				type: 'figure',
-				ratio: 'wide',
-				src: '/media/adyen-navigation-redesign.png',
-				framed: true,
-				peek: false,
-				caption: 'Navigation redesign'
+				text: 'Adyen’s largest customers brought a different kind of complexity. A small business might operate through one account. A global company could manage hundreds of accounts, thousands of stores and many layers of access.'
 			},
 			{
 				type: 'paragraph',
-				text: 'No one had mapped the full product, so we drew the first UX sitemap. It showed duplicate paths, create flows with no list, and corners almost no one knew about. We used that map to shape the information architecture around objects: list, create, detail. Then we built global search for the cases where the menu was still not enough.'
+				text: 'I worked on navigation, account switching, bulk operations and user management. Some of these flows had to support actions across more than a hundred accounts or permissions spanning over 10,000 stores.'
 			},
 			{
-				type: 'figure',
-				ratio: 'wide',
-				src: '/media/adyen-navigation-proposal.jpg',
-				framed: true,
-				peek: false,
-				caption: 'Navigation proposal'
+				type: 'paragraph',
+				text: 'We could not remove the underlying complexity, but we could stop exposing all of it at once. The work was about giving people a clear sense of where they were, what they could change and what the consequences would be.'
 			},
 			{
-				type: 'figure',
-				ratio: 'ultrawide',
-				caption: 'UX sitemap'
-			},
-			{
-				type: 'figures',
-				count: 2,
-				ratio: 'wide',
-				captions: ['Account data', 'Global search']
+				type: 'logos',
+				items: [
+					{ src: '/media/customers/microsoft.svg', alt: 'Microsoft' },
+					{ src: '/media/customers/mcdonalds.svg', alt: 'McDonald’s' },
+					{ src: '/media/customers/uber.svg', alt: 'Uber' },
+					{ src: '/media/customers/ebay.svg', alt: 'eBay' },
+					{ src: '/media/customers/spotify.svg', alt: 'Spotify' },
+					{ src: '/media/customers/booking.svg', alt: 'Booking.com' }
+				]
 			},
 			{
 				type: 'heading',
-				text: 'Leading the team'
+				text: 'Leading beyond design'
 			},
 			{
 				type: 'paragraph',
-				text: 'As an engineering team lead I owned the navigation and search. Two product managers often needed the same engineers, so we split the team into two workstreams. We also shipped Essentials, the franchisee platform, for merchants who did not need the full product.'
+				text: 'As Engineering Team Lead, I became responsible for a multidisciplinary Customer Area team spanning design, frontend and backend engineering.'
 			},
 			{
 				type: 'paragraph',
-				text: 'As a UX manager I ran Project Boost: shared templates for list, create, and detail pages. The goal was simple. Stop a new layout for every object. I also led designers, writers, and researchers across Checkout, developer documentation, reporting, and reconciliation.'
-			},
-			{
-				type: 'figures',
-				count: 2,
-				ratio: 'wide',
-				captions: ['Boost templates', 'Franchisee platform']
-			},
-			{
-				type: 'figures',
-				count: 2,
-				ratio: 'wide',
-				captions: ['Checkout', 'Reporting']
+				text: 'When the existing search experience could no longer keep up with Adyen’s largest merchants, the team replaced it with a faster and more reliable system built on Elasticsearch. The work involved more than redesigning the interface. We had to understand technical dependencies, plan the migration and roll it out without disrupting the platform around it.'
 			},
 			{
 				type: 'paragraph',
-				text: 'What lasted was the structural work: a design system teams could use, navigation that could grow, a shared map of the product, search, and page templates. Everything else waited on migration.'
+				text: 'The team itself also needed attention. Two product managers depended on many of the same engineers, making priorities and ownership difficult to follow. I split the group around clearer areas of responsibility and introduced a lightweight delivery rhythm that gave us more oversight without adding unnecessary process.'
+			},
+			{
+				type: 'paragraph',
+				text: 'This changed how I thought about product leadership. The quality of the interface depended on decisions made across the whole system, so design could not operate as a separate step at the end.'
+			},
+			{
+				type: 'heading',
+				text: 'From one product to a portfolio'
+			},
+			{
+				type: 'paragraph',
+				text: 'When I moved into design management, my responsibility became much broader than the Customer Area.'
+			},
+			{
+				type: 'paragraph',
+				text: 'At different points, my remit included the merchant platform, localization, the franchisee platform, developer documentation and shopper-facing checkout components. These products served different audiences, from merchants operating complex global businesses to developers integrating Adyen and shoppers completing a payment.'
+			},
+			{
+				type: 'paragraph',
+				text: 'I did not need to be the designer closest to every detail. My job was to make ownership clear, put the right people on the right problems and help teams make sound decisions. I reviewed key work, challenged scopes, connected teams working on related problems and represented UX in wider product and leadership discussions.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The breadth was useful. Decisions made in documentation affected integration. Checkout components had to work across markets. Shared platform patterns could reduce repeated work elsewhere. Treating each area as an isolated product would have made all of them weaker.'
+			},
+			{
+				type: 'heading',
+				text: 'Building the team'
+			},
+			{
+				type: 'paragraph',
+				text: 'I grew the design team from six to thirteen people. I hired designers, coached them through difficult projects and handled performance, development and career conversations.'
+			},
+			{
+				type: 'paragraph',
+				text: 'As the group grew, my role became less about supplying answers and more about giving people the context and trust to make their own calls. Three people I managed went on to become team leads. Others grew into senior and staff-level roles.'
+			},
+			{
+				type: 'paragraph',
+				text: 'I joined Adyen as a designer focused on improving one part of the product. I left responsible for the people shaping several parts of its experience. Some of the foundations I worked on are still visible in the platform, but the part I value most is that the teams and people continued to grow without needing me in the room.'
 			}
 		],
-		services: 'Product Design, Design Systems, Leadership',
-		year: '2018 – 2025',
-		role: 'Principal Designer, Design System Lead, Engineering Team Lead, UX Manager',
+		services: 'Product design, multidisciplinary leadership, team development',
+		year: '2018–2025',
+		role: 'UX Manager',
+		metaLabels: { role: 'Last role', services: 'Scope', year: 'Years' },
 		highlights: [
-			'Design system, navigation, and search',
-			'Account data, localization, and internal tooling',
-			'Franchisee platform, Checkout, docs, and reporting'
+			'Multidisciplinary UX team',
+			'Product narrative and focus',
+			'Coherence across languages and markets'
 		],
 		link: { label: 'adyen.com', href: 'https://www.adyen.com' },
 		video: '/media/adyen.mp4?v=1080',
@@ -201,21 +273,80 @@ export const workProjects: WorkProject[] = [
 	{
 		id: 'plekka',
 		title: 'Plekka',
-		meta: 'Online Travel Agency — website',
+		meta: 'Online travel agency — website',
 		description:
-			'An online travel agency for browsing destinations, comparing stays, and booking trips without the usual booking-flow friction.',
+			'A travel site for browsing destinations, comparing stays, and booking without the usual checkout noise.',
 		body: [
-			'Plekka is an online travel agency website built around finding and booking trips with less friction — destinations, stays, and the path to checkout.',
-			'The work covered product design and the site experience: clear search, readable listings, and a booking flow that stays calm when the inventory gets dense.'
+			'Plekka is a personal product: an online travel agency built around finding a trip and getting to a booking without the usual friction.',
+			'The work is product, brand, and the site itself. Search, listings, and a checkout that stays calm when inventory gets dense.'
 		],
-		comingSoon: true,
-		services: 'Product Design, Brand, Engineering',
+		caseStudy: [
+			{
+				type: 'heading',
+				text: 'The idea'
+			},
+			{
+				type: 'paragraph',
+				text: 'Most booking sites feel like a form with a map attached. Plekka starts from the trip: where you want to go, what the stay feels like, then the booking.'
+			},
+			{
+				type: 'figure',
+				ratio: 'wide',
+				src: '/media/plekka-placeholder.svg',
+				caption: 'Home, destinations first'
+			},
+			{
+				type: 'heading',
+				text: 'Finding a stay'
+			},
+			{
+				type: 'paragraph',
+				text: 'Search and compare without stacking filters on filters. Listings should stay readable when the inventory gets dense.'
+			},
+			{
+				type: 'figures',
+				count: 2,
+				ratio: 'tall',
+				captions: ['Search', 'Stay']
+			},
+			{
+				type: 'figure',
+				ratio: 'ultrawide',
+				caption: 'Compare stays on one surface'
+			},
+			{
+				type: 'figures',
+				count: 3,
+				ratio: 'square',
+				captions: ['Dates', 'Guests', 'Price']
+			},
+			{
+				type: 'heading',
+				text: 'Booking'
+			},
+			{
+				type: 'paragraph',
+				text: 'Checkout is where travel sites usually get loud. The aim was a short path that still feels considered.'
+			},
+			{
+				type: 'figures',
+				count: 2,
+				ratio: 'wide',
+				captions: ['Guest details', 'Confirm']
+			},
+			{
+				type: 'figure',
+				ratio: 'wide',
+				caption: 'Confirmation, then the trip'
+			}
+		],
+		services: 'Product, brand, engineering',
 		year: '2024',
-		role: 'Product & Design',
+		role: 'Personal project',
 		highlights: [
 			'Destination search and stay comparison',
 			'Booking flow with less checkout friction',
-			'Responsive marketing + product surfaces'
+			'Responsive marketing and product surfaces'
 		],
 		cardSize: 'short'
 	},
@@ -339,7 +470,7 @@ export const roles = [
 		cards: 2
 	},
 	{
-		title: 'Principal Designer + Design System Lead',
+		title: 'Principal Product Designer + Design System Lead',
 		company: 'Adyen',
 		dates: 'Jun 2018 – Jun 2021',
 		description:

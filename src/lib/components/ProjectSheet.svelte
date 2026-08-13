@@ -3,6 +3,10 @@
 	import { page } from '$app/state';
 	import { tick, untrack } from 'svelte';
 	import { getWorkProject, type CaseFigureRatio } from '$lib/data';
+	import CaseFigureMagnet from '$lib/components/CaseFigureMagnet.svelte';
+	import CaseDiagram from '$lib/components/CaseDiagram.svelte';
+	import MenuComponent from '$lib/components/MenuComponent.svelte';
+	import RoleTimeline from '$lib/components/RoleTimeline.svelte';
 	import {
 		activeMotion,
 		defaultCloseEaseId,
@@ -129,7 +133,7 @@
 	const FIGURE_VIEW_PAD = 20;
 	/** Allow zooming out past “fit width” so the image can sit inside a larger canvas. */
 	const FIGURE_ZOOM_MIN = 0.25;
-	const FIGURE_ZOOM_MAX = 8;
+	const FIGURE_ZOOM_MAX = 3;
 	const FIGURE_ZOOM_STEP = 0.25;
 	let figureZoom = $state(1);
 	const canFigureZoomOut = $derived(figureZoom > FIGURE_ZOOM_MIN + 0.001);
@@ -211,13 +215,15 @@
 	}
 
 	function finalRect(): Rect {
-		const padTop = 40;
-		const padBottom = 20;
+		// Sit a bit closer to page chrome than the old 40/20 inset — not full page-pad.
+		const pagePad = cssLength('var(--page-pad)');
+		const padY = Math.round(Math.min(48, Math.max(28, pagePad * 0.7)));
+		const padX = Math.round(Math.min(28, Math.max(12, pagePad * 0.35)));
 		return withPxRadius({
-			top: padTop,
-			left: cssLength('calc(var(--grid-offset) + var(--grid-pad))'),
-			width: cssLength('var(--span-8)'),
-			height: window.innerHeight - padTop - padBottom,
+			top: padY,
+			left: cssLength(`calc(var(--grid-offset) + var(--grid-pad) + ${padX}px)`),
+			width: cssLength(`calc(var(--span-8) - ${padX * 2}px)`),
+			height: window.innerHeight - padY * 2,
 			radius: '1.75rem'
 		});
 	}
@@ -2540,16 +2546,19 @@
 						<dl class="meta">
 							{#if project.role}
 								<div>
-									<dt>{project.role.includes(',') ? 'Roles' : 'Role'}</dt>
+									<dt>
+										{project.metaLabels?.role ??
+											(project.role.includes(',') ? 'Roles' : 'Role')}
+									</dt>
 									<dd>{project.role}</dd>
 								</div>
 							{/if}
 							<div>
-								<dt>Services</dt>
+								<dt>{project.metaLabels?.services ?? 'Services'}</dt>
 								<dd>{project.services}</dd>
 							</div>
 							<div>
-								<dt>Year</dt>
+								<dt>{project.metaLabels?.year ?? 'Year'}</dt>
 								<dd>{project.year}</dd>
 							</div>
 							{#if project.link}
@@ -2578,6 +2587,32 @@
 									<h3 class="case-heading">{block.text}</h3>
 								{:else if block.type === 'paragraph'}
 									<p class="case-copy">{block.text}</p>
+								{:else if block.type === 'logos'}
+									<ul class="case-logos">
+										{#each block.items as logo (logo.src)}
+											<li>
+												<img src={logo.src} alt={logo.alt} />
+											</li>
+										{/each}
+									</ul>
+								{:else if block.type === 'timeline'}
+									<RoleTimeline roles={block.roles} />
+								{:else if block.type === 'embed'}
+									<figure
+										class="case-figure case-embed"
+										class:is-diagram={block.embed !== 'menu'}
+									>
+										<div class="case-ph framed embed-stage">
+											{#if block.embed === 'menu'}
+												<MenuComponent />
+											{:else if block.embed !== 'menu'}
+												<CaseDiagram kind={block.embed} />
+											{/if}
+										</div>
+										{#if block.caption}
+											<figcaption>{block.caption}</figcaption>
+										{/if}
+									</figure>
 								{:else if block.type === 'figure'}
 									{@const figKey = `fig-${index}`}
 									<figure
@@ -2587,41 +2622,61 @@
 										class:peek={Boolean(block.peek)}
 										use:figureExpandOnView={block.expand ? figKey : ''}
 									>
-										<button
-											type="button"
-											class="case-ph"
-											class:has-image={Boolean(block.src)}
-											class:has-backdrop={Boolean(block.background)}
-											class:framed={Boolean(block.framed || block.background)}
-											class:peek={Boolean(block.peek)}
-											class:is-figure-open={figureOpenKey === figKey}
-											data-figure-key={figKey}
-											aria-label={block.caption
-												? `Open figure: ${block.caption}`
-												: 'Open figure'}
-											style:background={block.background}
-											onclick={(event) =>
-												openFigureFill(event, {
-													key: figKey,
-													ratio: block.ratio ?? 'wide',
-													caption: block.caption,
-													src: block.src,
-													background: block.background,
-													framed: Boolean(block.framed || block.background),
-													peek: Boolean(block.peek)
-												})}
-										>
-											{#if block.src}
-												<img
-													src={block.src}
-													alt=""
-													width="1024"
-													height="665"
-													decoding="async"
-													draggable="false"
-												/>
-											{/if}
-										</button>
+										{#if block.src}
+											<CaseFigureMagnet>
+												<button
+													type="button"
+													class="case-ph"
+													class:has-image={true}
+													class:has-backdrop={Boolean(block.background)}
+													class:framed={Boolean(block.framed || block.background)}
+													class:peek={Boolean(block.peek)}
+													class:scaled={typeof block.scale === 'number'}
+													class:fill={Boolean(block.fill)}
+													class:is-figure-open={figureOpenKey === figKey}
+													data-figure-key={figKey}
+													aria-label={block.caption
+														? `Open figure: ${block.caption}`
+														: 'Open figure'}
+													style:background={block.background}
+													style:--figure-scale={typeof block.scale === 'number'
+														? String(block.scale)
+														: null}
+													onclick={(event) =>
+														openFigureFill(event, {
+															key: figKey,
+															ratio: block.ratio ?? 'wide',
+															caption: block.caption,
+															src: block.src,
+															background: block.background,
+															framed: Boolean(block.framed || block.background),
+															peek: Boolean(block.peek)
+														})}
+												>
+													<img
+														src={block.src}
+														alt=""
+														width="1024"
+														height="665"
+														decoding="async"
+														draggable="false"
+													/>
+												</button>
+											</CaseFigureMagnet>
+										{:else}
+											<div
+												class="case-ph"
+												class:has-backdrop={Boolean(block.background)}
+												class:framed={Boolean(block.framed || block.background)}
+												class:peek={Boolean(block.peek)}
+												class:scaled={typeof block.scale === 'number'}
+												class:fill={Boolean(block.fill)}
+												style:background={block.background}
+												style:--figure-scale={typeof block.scale === 'number'
+													? String(block.scale)
+													: null}
+											></div>
+										{/if}
 										{#if block.caption}
 											<figcaption>{block.caption}</figcaption>
 										{/if}
@@ -2646,39 +2701,70 @@
 												class="case-figure ratio-{block.ratio ?? 'square'}"
 												class:peek={figPeek}
 											>
-												<button
-													type="button"
+											{#if block.srcs?.[figIndex]}
+												<CaseFigureMagnet>
+													<button
+														type="button"
+														class="case-ph"
+														class:has-image={true}
+														class:has-backdrop={Boolean(block.backgrounds?.[figIndex])}
+														class:framed={figFramed}
+														class:peek={figPeek}
+														class:is-figure-open={figureOpenKey ===
+															`figs-${index}-${figIndex}`}
+														data-figure-key="figs-{index}-{figIndex}"
+														aria-label={block.captions?.[figIndex]
+															? `Open figure: ${block.captions[figIndex]}`
+															: 'Open figure'}
+														style:background={block.backgrounds?.[figIndex]}
+														onclick={(event) =>
+															openFigureFill(event, {
+																key: `figs-${index}-${figIndex}`,
+																ratio: block.ratio ?? 'square',
+																caption: block.captions?.[figIndex],
+																src: block.srcs?.[figIndex],
+																background: block.backgrounds?.[figIndex],
+																framed: figFramed,
+																peek: figPeek
+															})}
+													>
+														<img
+															src={block.srcs[figIndex]}
+															alt=""
+															draggable="false"
+														/>
+													</button>
+												</CaseFigureMagnet>
+											{:else}
+												<div
 													class="case-ph"
-													class:has-image={Boolean(block.srcs?.[figIndex])}
 													class:has-backdrop={Boolean(block.backgrounds?.[figIndex])}
 													class:framed={figFramed}
 													class:peek={figPeek}
-													class:is-figure-open={figureOpenKey === `figs-${index}-${figIndex}`}
-													data-figure-key="figs-{index}-{figIndex}"
-													aria-label={block.captions?.[figIndex]
-														? `Open figure: ${block.captions[figIndex]}`
-														: 'Open figure'}
 													style:background={block.backgrounds?.[figIndex]}
-													onclick={(event) =>
-														openFigureFill(event, {
-															key: `figs-${index}-${figIndex}`,
-															ratio: block.ratio ?? 'square',
-															caption: block.captions?.[figIndex],
-															src: block.srcs?.[figIndex],
-															background: block.backgrounds?.[figIndex],
-															framed: figFramed,
-															peek: figPeek
-														})}
-												>
-													{#if block.srcs?.[figIndex]}
-														<img src={block.srcs[figIndex]} alt="" draggable="false" />
-													{/if}
-												</button>
+												></div>
+											{/if}
 												{#if block.captions?.[figIndex]}
 													<figcaption>{block.captions[figIndex]}</figcaption>
 												{/if}
 											</figure>
 										{/each}
+									</div>
+								{:else if block.type === 'qa'}
+									<article class="case-qa">
+										<h3 class="case-q">{block.q}</h3>
+										{#each (typeof block.a === 'string' ? [block.a] : block.a) as para, paraIndex (`${index}-${paraIndex}`)}
+											<p class="case-copy">{para}</p>
+										{/each}
+									</article>
+								{:else if block.type === 'list'}
+									<div class="highlights" aria-label={block.title}>
+										<h3>{block.title}</h3>
+										<ul>
+											{#each block.items as item (item)}
+												<li>{item}</li>
+											{/each}
+										</ul>
 									</div>
 								{/if}
 							{/each}
@@ -2979,12 +3065,11 @@
 		padding: 0;
 		border: 0;
 		border-radius: 999px;
-		background: rgb(20 20 20 / 0.72);
+		/* Same fill as the figure minimap canvas. */
+		background: color-mix(in srgb, var(--color-text) 28%, var(--color-bg));
 		color: #fff;
 		cursor: pointer;
-		backdrop-filter: blur(10px);
-		-webkit-backdrop-filter: blur(10px);
-		box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+		box-shadow: none;
 		transition:
 			background-color 140ms ease,
 			opacity 140ms ease,
@@ -2998,7 +3083,7 @@
 	}
 
 	.figure-btn:hover:not(:disabled) {
-		background: rgb(20 20 20 / 0.88);
+		background: color-mix(in srgb, var(--color-text) 40%, var(--color-bg));
 	}
 
 	.figure-btn:active:not(:disabled) {
@@ -3020,14 +3105,6 @@
 		z-index: 5;
 		top: var(--figure-chrome-inset);
 		right: var(--figure-chrome-inset);
-		background: rgb(20 20 20 / 0.2);
-		backdrop-filter: blur(80px);
-		-webkit-backdrop-filter: blur(80px);
-		box-shadow: none;
-	}
-
-	.figure-close:hover:not(:disabled) {
-		background: rgb(20 20 20 / 0.35);
 	}
 
 	.figure-minimap {
@@ -3223,6 +3300,9 @@
 		touch-action: pan-y;
 		/* Native bars are overlay/hidden on macOS — we draw our own. */
 		scrollbar-width: none;
+		/* Bleed for magnet tilt: padding + negative margin cancel so layout width is unchanged. */
+		padding-inline: 12px;
+		margin-inline: -12px;
 	}
 
 	.card.expanded:not(.morphing):not(.closing) .scroller::-webkit-scrollbar {
@@ -3471,6 +3551,8 @@
 	.details {
 		position: relative;
 		z-index: 1;
+		overflow: visible;
+		container-type: inline-size;
 		background: var(--color-bg);
 		color: var(--color-text);
 		opacity: 0;
@@ -3493,6 +3575,7 @@
 		margin: 0 auto;
 		padding: clamp(2rem, 5vw, 3.25rem) 0 clamp(3.5rem, 8vw, 5.5rem);
 		box-sizing: border-box;
+		overflow: visible;
 	}
 
 	.details.coming-soon .details-inner {
@@ -3525,6 +3608,12 @@
 			width: auto;
 			margin-inline: var(--page-pad);
 		}
+
+		.case-figures.count-2,
+		.case-figures.count-3 {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 2.5rem;
+		}
 	}
 
 	.details-inner > p,
@@ -3533,6 +3622,10 @@
 		font-size: 1rem;
 		line-height: 1.55;
 		color: var(--color-muted);
+	}
+
+	.case-copy:last-of-type {
+		margin-bottom: 0;
 	}
 
 	.case-heading {
@@ -3548,20 +3641,77 @@
 		margin-top: 0;
 	}
 
+	.case-logos {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 1.15rem 2rem;
+		margin: 1.5rem 0 0;
+		padding: 0;
+		list-style: none;
+		max-width: var(--span-4);
+	}
+
+	.case-logos img {
+		display: block;
+		height: 2rem;
+		width: auto;
+		max-width: 7.5rem;
+		object-fit: contain;
+		object-position: left center;
+		filter: brightness(0) invert(1);
+		opacity: 0.55;
+	}
+
+	.case-logos + .case-heading {
+		margin-top: 2.75rem;
+	}
+
+	.case-qa {
+		margin: 0 0 2.15rem;
+	}
+
+	.case-qa:last-child {
+		margin-bottom: 0;
+	}
+
+	.case-q {
+		margin: 0 0 0.7rem;
+		font-size: clamp(1.05rem, 1.8vw, 1.2rem);
+		font-weight: var(--font-weight);
+		line-height: 1.35;
+		color: var(--color-text);
+	}
+
+	.meta + .case-qa .case-q {
+		margin-top: 0;
+	}
+
+	.case-qa .case-copy:last-child {
+		margin-bottom: 0;
+	}
+
 	.case-figure {
 		width: 100%;
 		max-width: var(--span-4);
-		margin: 1.5rem 0 0.35rem;
+		/* Equal air above the image and below the label. */
+		margin: 2.5rem 0;
 		padding: 0;
-		content-visibility: auto;
-		contain-intrinsic-size: auto 16rem;
+		overflow: visible;
+		/* Avoid content-visibility — it paint-contains and clips the magnet tilt. */
+		transition: opacity 220ms ease;
+	}
+
+	/* Homepage showcase-style focus: dim siblings while an openable figure is hot. */
+	.details-inner:has(.case-figure:has(button.case-ph):hover) .case-figure:not(:hover) {
+		opacity: 0.28;
 	}
 
 	.case-ph {
 		display: block;
 		width: 100%;
 		max-width: var(--span-4);
-		border-radius: 1rem;
+		border-radius: 0.75rem;
 		background: color-mix(in srgb, var(--color-text) 10%, var(--color-bg));
 		overflow: hidden;
 	}
@@ -3584,7 +3734,7 @@
 
 	.case-ph.framed:not(.peek),
 	.case-ph.has-backdrop:not(.peek) {
-		padding: 0.85rem;
+		padding: 20px;
 		box-sizing: border-box;
 	}
 
@@ -3592,7 +3742,59 @@
 	.case-ph.has-backdrop:not(.peek) img {
 		object-fit: contain;
 		object-position: center;
-		border-radius: 8px;
+		border-radius: 4px;
+	}
+
+	/* Tight chrome — image spans the full inner width; radius follows the outer frame. */
+	.case-figure .case-ph.framed.fill:not(.peek) {
+		--figure-frame-pad: 8px;
+		aspect-ratio: auto;
+		display: block;
+		padding: var(--figure-frame-pad);
+	}
+
+	.case-ph.framed.fill:not(.peek) img {
+		position: static;
+		display: block;
+		width: 100%;
+		height: auto;
+		max-width: none;
+		max-height: none;
+		border-radius: calc(0.75rem - var(--figure-frame-pad));
+	}
+
+	/* Centered inset — hug the scaled image instead of a tall empty frame. */
+	.case-figure .case-ph.framed.scaled:not(.peek) {
+		aspect-ratio: auto;
+		display: grid;
+		place-items: center;
+	}
+
+	.case-ph.framed.scaled:not(.peek) img {
+		width: calc(100% * var(--figure-scale, 0.5));
+		height: auto;
+		max-height: none;
+		object-fit: contain;
+	}
+
+	/* Live component demos sit in the same framed stage as static figures. */
+	.case-embed .embed-stage {
+		aspect-ratio: auto;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 2.5rem 20px;
+		cursor: default;
+	}
+
+	.case-embed .embed-stage :global(.menu-demo) {
+		margin-inline: auto;
+		flex-shrink: 0;
+	}
+
+	.case-embed.is-diagram .embed-stage {
+		display: block;
+		padding: 1.15rem 1rem 1.05rem;
 	}
 
 	button.case-ph {
@@ -3623,6 +3825,11 @@
 
 	.case-figure.ratio-ultrawide .case-ph {
 		aspect-ratio: 21 / 9;
+	}
+
+	.case-figure.ratio-strip .case-ph {
+		/* Height comes from the bar image + padding (see peek override). */
+		aspect-ratio: auto;
 	}
 
 	.case-figure.ratio-wide .case-ph {
@@ -3666,12 +3873,45 @@
 		height: auto;
 		object-fit: cover;
 		object-position: top left;
-		border-radius: 8px 0 0 0;
+		border-radius: 4px 0 0 0;
 		flex-shrink: 0;
 	}
 
+	/* Panoramic figures — harder crop, anchored bottom-left. */
+	.case-figure.ratio-ultrawide .case-ph.peek {
+		position: relative;
+		padding: 0 0 1rem 1rem;
+	}
+
+	.case-figure.ratio-ultrawide .case-ph.peek img {
+		position: absolute;
+		left: 1rem;
+		bottom: 1rem;
+		width: calc(var(--span-4) * 3.25);
+		height: auto;
+		object-position: left bottom;
+		border-radius: 0 0 0 4px;
+	}
+
+	/* Thin chrome bars — 20px inset, scaled past the frame so the right edge crops. */
+	.case-figure.ratio-strip .case-ph.peek {
+		padding: 20px 0 20px 20px;
+		overflow: hidden;
+	}
+
+	.case-figure.ratio-strip .case-ph.peek img {
+		position: static;
+		display: block;
+		width: calc(var(--span-4) * 2.1);
+		height: auto;
+		max-width: none;
+		object-fit: cover;
+		object-position: left center;
+		border-radius: 4px 0 0 4px;
+	}
+
 	.case-figure figcaption {
-		margin: 0.55rem 0 1.25rem;
+		margin: 0.55rem 0 0;
 		font-size: 0.85rem;
 		line-height: 1.4;
 		color: var(--color-muted);
@@ -3681,10 +3921,21 @@
 		display: grid;
 		grid-template-columns: minmax(0, var(--span-4));
 		justify-content: start;
-		gap: 1.5rem;
+		gap: 2.5rem;
 		width: 100%;
 		max-width: var(--span-4);
-		margin: 1.5rem 0 0.35rem;
+		margin: 2.5rem 0;
+		overflow: visible;
+	}
+
+	.case-figures.count-2 {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 1rem;
+	}
+
+	.case-figures.count-3 {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.85rem;
 	}
 
 	.case-figures .case-figure {
@@ -3693,8 +3944,16 @@
 		margin: 0;
 	}
 
+	.case-figures .case-figure figcaption {
+		font-size: 0.8rem;
+	}
+
 	.highlights {
 		margin-top: 2rem;
+	}
+
+	.highlights + .highlights {
+		margin-top: 1.5rem;
 	}
 
 	.highlights h3 {
@@ -3724,8 +3983,6 @@
 		display: grid;
 		gap: 0.55rem;
 		margin: 0 0 2.75rem;
-		padding-bottom: 2rem;
-		border-bottom: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
 	}
 
 	.meta div {

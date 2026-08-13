@@ -28,15 +28,15 @@
 		<p class="subline">{profile.subline}</p>
 
 		<div class="actions">
+			<MagneticPill variant="primary" href="/work">View work</MagneticPill>
 			<MagneticPill
-				variant="primary"
+				variant="secondary"
 				href={profile.linkedin}
 				target="_blank"
 				rel="noopener noreferrer"
 			>
 				Say hi
 			</MagneticPill>
-			<MagneticPill variant="secondary" href="/work">View work</MagneticPill>
 		</div>
 	</header>
 
@@ -186,7 +186,7 @@
 		letter-spacing: -0.03em;
 		color: var(--color-text);
 		white-space: pre-line;
-		max-width: 14em;
+		max-width: 18em;
 	}
 
 	.subline {
