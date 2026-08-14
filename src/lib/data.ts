@@ -2,9 +2,9 @@ export const profile = {
 	name: 'Naim Chayata',
 	location: 'Utrecht, The Netherlands',
 	/** Two-line hero. Soft break is intentional. */
-	title: 'Hi, I’m Naim.\nA design leader who likes to stay close to the work.',
+	title: 'A design leader who never stopped making things.',
 	subline:
-		'I spent seven years at Adyen, moving from hands-on product design to leading designers, writers and researchers across its merchant, developer and checkout experiences. These days, I build new products through Mayfold.',
+		'I spent seven years at Adyen, moving from hands-on product design to leading designers, writers and researchers across its merchant, developer and checkout experiences. These days, I build products of my own.',
 	email: null as string | null,
 	linkedin: 'https://www.linkedin.com/in/naimchayata/'
 };
@@ -31,6 +31,12 @@ export type CaseTimelineRole = {
 	end: string;
 	/** Held alongside another title instead of after it. */
 	concurrent?: boolean;
+};
+
+export type CasePhoneScreen = {
+	src?: string;
+	caption?: string;
+	background?: string;
 };
 
 export type CaseStudyBlock =
@@ -73,7 +79,51 @@ export type CaseStudyBlock =
 	| { type: 'list'; title: string; items: string[] }
 	| { type: 'qa'; q: string; a: string | string[] }
 	| { type: 'timeline'; roles: CaseTimelineRole[] }
-	| { type: 'logos'; items: { src: string; alt: string }[] };
+	| { type: 'logos'; items: { src: string; alt: string }[] }
+	| {
+			type: 'phones';
+			/** One to three screens, centered in a single stage. */
+			screens: CasePhoneScreen[];
+	  };
+
+export type CaseFigure = Extract<CaseStudyBlock, { type: 'figure' }>;
+export type CaseFigures = Extract<CaseStudyBlock, { type: 'figures' }>;
+export type CasePhones = Extract<CaseStudyBlock, { type: 'phones' }>;
+
+/** One chapter in a personal-product case. Add `media` when the visuals are ready. */
+export type ProductStoryBeat = {
+	heading: string;
+	text: string | string[];
+	media?: Array<CaseFigure | CaseFigures | CasePhones>;
+};
+
+function storyParagraphs(text: string | string[]): CaseStudyBlock[] {
+	return (Array.isArray(text) ? text : [text]).map((paragraph) => ({
+		type: 'paragraph' as const,
+		text: paragraph
+	}));
+}
+
+/**
+ * Shared shape for Plekka, Rolls, Mayfold and the next ones:
+ * idea → optional overview figure → beats (heading, copy, images) → optional status.
+ */
+export function productStory(story: {
+	idea: string | string[];
+	overview?: CaseFigure | CaseFigures;
+	beats: ProductStoryBeat[];
+	status?: string | string[];
+}): CaseStudyBlock[] {
+	const blocks: CaseStudyBlock[] = [...storyParagraphs(story.idea)];
+	if (story.overview) blocks.push(story.overview);
+	for (const beat of story.beats) {
+		blocks.push({ type: 'heading', text: beat.heading });
+		blocks.push(...storyParagraphs(beat.text));
+		if (beat.media) blocks.push(...beat.media);
+	}
+	if (story.status) blocks.push(...storyParagraphs(story.status));
+	return blocks;
+}
 
 export type WorkProject = {
 	id: string;
@@ -86,9 +136,10 @@ export type WorkProject = {
 	caseStudy?: CaseStudyBlock[];
 	/** Sheet shows a short “coming soon” state instead of a full case study. */
 	comingSoon?: boolean;
-	services: string;
+	services?: string;
 	year: string;
 	role?: string;
+	stage?: string;
 	/** Overrides for the sheet meta labels (e.g. “Last role” instead of “Role”). */
 	metaLabels?: { role?: string; services?: string; year?: string };
 	/** Short mock highlights for the project overlay */
@@ -196,7 +247,19 @@ export const workProjects: WorkProject[] = [
 					{ src: '/media/customers/uber.svg', alt: 'Uber' },
 					{ src: '/media/customers/ebay.svg', alt: 'eBay' },
 					{ src: '/media/customers/spotify.svg', alt: 'Spotify' },
-					{ src: '/media/customers/booking.svg', alt: 'Booking.com' }
+					{ src: '/media/customers/booking.svg', alt: 'Booking.com' },
+					{ src: '/media/customers/linkedin.svg', alt: 'LinkedIn' },
+					{ src: '/media/customers/klm.svg', alt: 'KLM' },
+					{ src: '/media/customers/etsy.svg', alt: 'Etsy' },
+					{ src: '/media/customers/wise.svg', alt: 'Wise' },
+					{ src: '/media/customers/gap.svg', alt: 'Gap' },
+					{ src: '/media/customers/loreal.svg', alt: 'L’Oréal' },
+					{ src: '/media/customers/farfetch.svg', alt: 'Farfetch' },
+					{ src: '/media/customers/easyjet.svg', alt: 'easyJet' },
+					{ src: '/media/customers/levis.svg', alt: 'Levi’s' },
+					{ src: '/media/customers/wix.svg', alt: 'Wix' },
+					{ src: '/media/customers/mango.svg', alt: 'Mango' },
+					{ src: '/media/customers/swarovski.svg', alt: 'Swarovski' }
 				]
 			},
 			{
@@ -254,6 +317,13 @@ export const workProjects: WorkProject[] = [
 			{
 				type: 'paragraph',
 				text: 'I joined Adyen as a designer focused on improving one part of the product. I left responsible for the people shaping several parts of its experience. Some of the foundations I worked on are still visible in the platform, but the part I value most is that the teams and people continued to grow without needing me in the room.'
+			},
+			{
+				type: 'figure',
+				ratio: 'wide',
+				src: '/media/adyen-community.jpg',
+				framed: true,
+				fill: true
 			}
 		],
 		services: 'Product design, multidisciplinary leadership, team development',
@@ -269,86 +339,6 @@ export const workProjects: WorkProject[] = [
 		video: '/media/adyen.mp4?v=1080',
 		poster: '/media/adyen-poster.jpg?v=1080',
 		cardSize: 'mid'
-	},
-	{
-		id: 'plekka',
-		title: 'Plekka',
-		meta: 'Online travel agency — website',
-		description:
-			'A travel site for browsing destinations, comparing stays, and booking without the usual checkout noise.',
-		body: [
-			'Plekka is a personal product: an online travel agency built around finding a trip and getting to a booking without the usual friction.',
-			'The work is product, brand, and the site itself. Search, listings, and a checkout that stays calm when inventory gets dense.'
-		],
-		caseStudy: [
-			{
-				type: 'heading',
-				text: 'The idea'
-			},
-			{
-				type: 'paragraph',
-				text: 'Most booking sites feel like a form with a map attached. Plekka starts from the trip: where you want to go, what the stay feels like, then the booking.'
-			},
-			{
-				type: 'figure',
-				ratio: 'wide',
-				src: '/media/plekka-placeholder.svg',
-				caption: 'Home, destinations first'
-			},
-			{
-				type: 'heading',
-				text: 'Finding a stay'
-			},
-			{
-				type: 'paragraph',
-				text: 'Search and compare without stacking filters on filters. Listings should stay readable when the inventory gets dense.'
-			},
-			{
-				type: 'figures',
-				count: 2,
-				ratio: 'tall',
-				captions: ['Search', 'Stay']
-			},
-			{
-				type: 'figure',
-				ratio: 'ultrawide',
-				caption: 'Compare stays on one surface'
-			},
-			{
-				type: 'figures',
-				count: 3,
-				ratio: 'square',
-				captions: ['Dates', 'Guests', 'Price']
-			},
-			{
-				type: 'heading',
-				text: 'Booking'
-			},
-			{
-				type: 'paragraph',
-				text: 'Checkout is where travel sites usually get loud. The aim was a short path that still feels considered.'
-			},
-			{
-				type: 'figures',
-				count: 2,
-				ratio: 'wide',
-				captions: ['Guest details', 'Confirm']
-			},
-			{
-				type: 'figure',
-				ratio: 'wide',
-				caption: 'Confirmation, then the trip'
-			}
-		],
-		services: 'Product, brand, engineering',
-		year: '2024',
-		role: 'Personal project',
-		highlights: [
-			'Destination search and stay comparison',
-			'Booking flow with less checkout friction',
-			'Responsive marketing and product surfaces'
-		],
-		cardSize: 'short'
 	},
 	{
 		id: 'mayfold',
@@ -370,7 +360,164 @@ export const workProjects: WorkProject[] = [
 			'Design + engineering in one loop'
 		],
 		link: { label: 'mayfold.com', href: 'https://mayfold.com' },
+		video: '/media/mayfold.mp4',
+		poster: '/media/mayfold.jpg',
 		cardSize: 'tall'
+	},
+	{
+		id: 'plekka',
+		title: 'Plekka',
+		meta: 'Hotel booking — closed beta',
+		description:
+			'The trip starts when you book it. Plekka compares live hotel rates and says when another offer is better.',
+		body: [
+			'The trip starts when you book it.',
+			'Most hotel sites stop being useful as soon as you pay. That feels backwards. Booking is when a trip becomes real.'
+		],
+		caseStudy: productStory({
+			idea: [
+				'The trip starts when you book it.',
+				'Most hotel sites stop being useful as soon as you pay. That feels backwards. Booking is when a trip becomes real. You know where you are going, when you will be there and where you will wake up.',
+				'Plekka starts with a practical job: help people book a hotel without wondering whether the same room is cheaper elsewhere. It compares its live rates with other booking sites and says when another offer is better.',
+				'I am building Plekka around a simple idea: earn trust on the price, then use that trust to make the trip better.'
+			],
+			beats: [
+				{
+					heading: 'Trust has to come first',
+					text: [
+						'A new travel brand cannot begin with loyalty. It first has to prove that the room, price and conditions are right.',
+						'This is harder than placing several prices in a table. Hotel suppliers use different room names and combine them with different cancellation terms, meal plans and payment conditions.',
+						'Plekka compares offers when those details match. When it cannot find a fair comparison, it says so. Sometimes Plekka is cheapest. Sometimes another site is. People get to see both.'
+					],
+					media: [
+						{
+							type: 'figures',
+							count: 2,
+							ratio: 'wide',
+							captions: ['Hotel discovery', 'Room comparison']
+						}
+					]
+				},
+				{
+					heading: 'The booking is the beginning',
+					text: [
+						'A booking contains the start of a relationship: a place, a date and a reason to travel. Most booking sites use that information to send more offers. Plekka could use it to make the trip better.',
+						'That may mean a small guide made for your stay, a restaurant worth booking early or real help when plans change. A family’s first trip with a child should not feel the same as an anniversary weekend or three days away with friends.',
+						'Plekka already brings saved hotels, bookings and upcoming trips together. The longer-term idea is to turn that account into a useful home for the whole trip.'
+					],
+					media: [
+						{
+							type: 'figures',
+							count: 2,
+							ratio: 'wide',
+							captions: ['Saved hotels', 'Upcoming trips']
+						}
+					]
+				},
+				{
+					heading: 'Starting with one real booking',
+					text: [
+						'The closed beta is focused on the foundation: can someone find a hotel, understand the comparison and feel comfortable booking through Plekka?',
+						'I am now completing the booking and payment flow and preparing to test it with a small group. If that journey does not work, everything after it is decoration. If it does, Plekka has earned the right to stay useful after the payment.'
+					]
+				}
+			]
+		}),
+		year: '2026',
+		role: 'Founder, product design and development',
+		stage: 'Preparing for closed beta',
+		metaLabels: { role: 'Role' },
+		link: { label: 'plekka.com', href: 'https://plekka.com' },
+		highlights: [
+			'Live rate comparison with other booking sites',
+			'Saved hotels, bookings and upcoming trips',
+			'Preparing a closed beta around one real booking'
+		],
+		cardSize: 'short'
+	},
+	{
+		id: 'rolls',
+		title: 'Rolls',
+		meta: 'Shared camera — in development',
+		description:
+			'One shared camera roll for a night with friends. Take a limited number of photos and see them together later.',
+		body: [
+			'One shared camera roll for a night with friends. Take a limited number of photos and see them together later.',
+			'The best part of a disposable camera is waiting. Nobody checks every shot or asks for a retake. The photos arrive after the night is over.'
+		],
+		caseStudy: productStory({
+			idea: [
+				'One shared camera roll for a night with friends. Take a limited number of photos and see them together later.',
+				'The best part of a disposable camera is waiting. Nobody checks every shot or asks for a retake. The photos arrive after the night is over.',
+				'Rolls brings that constraint to your phone. One person starts a roll and invites the group. Everyone gets a set number of photos. The roll closes at a chosen time and the photos stay hidden until they are ready.'
+			],
+			overview: {
+				type: 'figure',
+				ratio: 'ultrawide',
+				src: '/media/rolls-flow.jpg',
+				caption: 'The whole night, in one flow',
+				background: '#111',
+				framed: true,
+				peek: true
+			},
+			beats: [
+				{
+					heading: 'One roll for the night',
+					text: [
+						'The person creating the roll chooses its name, end time and photo limit. Friends join through a link or QR code.',
+						'Once inside, everyone uses the same simple camera. It shows which roll is active, who has joined and how many shots remain.'
+					],
+					media: [
+						{
+							type: 'phones',
+							screens: [{ caption: 'The camera', background: '#111' }]
+						}
+					]
+				},
+				{
+					heading: 'The photos can wait',
+					text: [
+						'Every photo goes straight into the roll. There is no preview and no live gallery.',
+						'After the end time, the roll first appears as developing. When it is ready, everyone gets the same album and can see the night from the group’s point of view.'
+					],
+					media: [
+						{
+							type: 'phones',
+							screens: [{ caption: 'No preview after a shot', background: '#111' }]
+						},
+						{
+							type: 'phones',
+							screens: [{ caption: 'The album', background: '#111' }]
+						}
+					]
+				}
+			],
+			status:
+				'We are now building the first working version. The first test is simple: will a group use Rolls for a real night out and return the next day to see the photos?'
+		}),
+		services: 'Concept, Product, Design',
+		year: '2025 – Present',
+		role: 'Concept and product design',
+		highlights: [
+			'Shared rolls with a photo limit',
+			'No preview until the roll is ready',
+			'Building the first working version'
+		],
+		poster: '/media/rolls-flow.jpg',
+		cardSize: 'short'
+	},
+	{
+		id: 'pomolo',
+		title: 'Pomolo',
+		meta: 'Coming soon',
+		description: 'A fuller write-up of this project is on the way.',
+		body: ['A fuller write-up of this project is on the way.'],
+		comingSoon: true,
+		year: '2026',
+		role: 'Founder',
+		video: '/media/pomolo.mp4',
+		poster: '/media/pomolo.jpg',
+		cardSize: 'wide'
 	}
 ];
 

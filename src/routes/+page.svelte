@@ -4,7 +4,7 @@
 	import { craftNotes, elsewhere, profile, roles, testimonials, workProjects } from '$lib/data';
 	import { openProject, openProjectId } from '$lib/projectSheet';
 
-	const featured = workProjects.slice(0, 4);
+	const featured = workProjects;
 	const featuredLeft = featured.filter((_, index) => index % 2 === 0);
 	const featuredRight = featured.filter((_, index) => index % 2 === 1);
 	const experience = roles.slice(0, 4);
@@ -43,7 +43,7 @@
 	<section class="section work" aria-label="Selected work">
 		<div class="showcase">
 			{#each [featuredLeft, featuredRight] as column, columnIndex (columnIndex)}
-				<div class="showcase-col">
+				<div class="showcase-col" class:offset={columnIndex === 1}>
 					{#each column as project (project.id)}
 						<article class="showcase-item" class:lifted={activeId === project.id}>
 							<MagneticCard
@@ -262,6 +262,10 @@
 		min-width: 0;
 	}
 
+	.showcase-col.offset {
+		padding-top: 5rem;
+	}
+
 	.showcase-col,
 	.showcase-item {
 		overflow: visible;
@@ -449,6 +453,10 @@
 		.showcase {
 			width: 100%;
 			grid-template-columns: 1fr;
+		}
+
+		.showcase-col.offset {
+			padding-top: 0;
 		}
 	}
 

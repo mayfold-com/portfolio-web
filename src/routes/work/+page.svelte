@@ -69,8 +69,11 @@
 		padding: 0;
 		list-style: none;
 		display: grid;
-		gap: 2.75rem;
-		width: var(--span-4);
+		grid-template-columns: var(--span-3) var(--span-3);
+		column-gap: var(--grid-gap);
+		row-gap: 2.75rem;
+		align-items: start;
+		width: max-content;
 		max-width: 100%;
 	}
 
@@ -99,6 +102,7 @@
 
 		.list {
 			width: 100%;
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

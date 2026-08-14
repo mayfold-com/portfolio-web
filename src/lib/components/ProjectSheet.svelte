@@ -7,6 +7,8 @@
 	import CaseDiagram from '$lib/components/CaseDiagram.svelte';
 	import MenuComponent from '$lib/components/MenuComponent.svelte';
 	import RoleTimeline from '$lib/components/RoleTimeline.svelte';
+	import CaseLogos from '$lib/components/CaseLogos.svelte';
+	import CasePhones from '$lib/components/CasePhones.svelte';
 	import {
 		activeMotion,
 		defaultCloseEaseId,
@@ -2553,14 +2555,22 @@
 									<dd>{project.role}</dd>
 								</div>
 							{/if}
-							<div>
-								<dt>{project.metaLabels?.services ?? 'Services'}</dt>
-								<dd>{project.services}</dd>
-							</div>
+							{#if project.services}
+								<div>
+									<dt>{project.metaLabels?.services ?? 'Services'}</dt>
+									<dd>{project.services}</dd>
+								</div>
+							{/if}
 							<div>
 								<dt>{project.metaLabels?.year ?? 'Year'}</dt>
 								<dd>{project.year}</dd>
 							</div>
+							{#if project.stage}
+								<div>
+									<dt>Stage</dt>
+									<dd>{project.stage}</dd>
+								</div>
+							{/if}
 							{#if project.link}
 								<div>
 									<dt>Link</dt>
@@ -2588,13 +2598,9 @@
 								{:else if block.type === 'paragraph'}
 									<p class="case-copy">{block.text}</p>
 								{:else if block.type === 'logos'}
-									<ul class="case-logos">
-										{#each block.items as logo (logo.src)}
-											<li>
-												<img src={logo.src} alt={logo.alt} />
-											</li>
-										{/each}
-									</ul>
+									<div class="case-logos">
+										<CaseLogos items={block.items} />
+									</div>
 								{:else if block.type === 'timeline'}
 									<RoleTimeline roles={block.roles} />
 								{:else if block.type === 'embed'}
@@ -2749,6 +2755,26 @@
 												{/if}
 											</figure>
 										{/each}
+									</div>
+								{:else if block.type === 'phones'}
+									<div class="case-phones">
+										<CasePhones
+											screens={block.screens}
+											blockIndex={index}
+											openKey={figureOpenKey}
+											onOpen={(event, screen, i) => {
+												if (!screen.src) return;
+												openFigureFill(event, {
+													key: `phones-${index}-${i}`,
+													ratio: 'tall',
+													caption: screen.caption,
+													src: screen.src,
+													background: screen.background,
+													framed: false,
+													peek: false
+												});
+											}}
+										/>
 									</div>
 								{:else if block.type === 'qa'}
 									<article class="case-qa">
@@ -3642,25 +3668,8 @@
 	}
 
 	.case-logos {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 1.15rem 2rem;
 		margin: 1.5rem 0 0;
-		padding: 0;
-		list-style: none;
 		max-width: var(--span-4);
-	}
-
-	.case-logos img {
-		display: block;
-		height: 2rem;
-		width: auto;
-		max-width: 7.5rem;
-		object-fit: contain;
-		object-position: left center;
-		filter: brightness(0) invert(1);
-		opacity: 0.55;
 	}
 
 	.case-logos + .case-heading {
@@ -3703,8 +3712,20 @@
 	}
 
 	/* Homepage showcase-style focus: dim siblings while an openable figure is hot. */
-	.details-inner:has(.case-figure:has(button.case-ph):hover) .case-figure:not(:hover) {
+	.details-inner:has(.case-figure:has(button.case-ph):hover) .case-figure:not(:hover),
+	.details-inner:has(.case-figure:has(button.case-ph):hover) .case-phones,
+	.details-inner:has(.case-phones:has(button):hover) .case-figure,
+	.details-inner:has(.case-phones:has(button):hover) .case-phones:not(:hover) {
 		opacity: 0.28;
+	}
+
+	.case-phones {
+		margin: 2.5rem 0;
+		transition: opacity 220ms ease;
+	}
+
+	.case-phones + .case-phones {
+		margin-top: 0.75rem;
 	}
 
 	.case-ph {

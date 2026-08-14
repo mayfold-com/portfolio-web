@@ -32,7 +32,7 @@
 	<title>Naim Chayata</title>
 	<meta
 		name="description"
-		content="Naim Chayata — design leader. Formerly UX Manager at Adyen. Building new products through Mayfold."
+		content="Naim Chayata — design leader. Formerly UX Manager at Adyen. Building products of his own."
 	/>
 	<link rel="icon" href={favicon} />
 	<link rel="preconnect" href="https://fonts.googleapis.com" />

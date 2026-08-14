@@ -24,12 +24,12 @@
 		const starts = roles.map((role) => toDecimalYear(role.start));
 		const ends = roles.map((role) => toExclusiveEnd(role.end));
 		const from = Math.floor(Math.min(...starts));
-		const to = Math.ceil(Math.max(...ends));
+		const to = Math.max(...ends);
 		return { from, to };
 	});
 
 	const ticks = $derived(
-		Array.from({ length: span.to - span.from + 1 }, (_, i) => span.from + i)
+		Array.from({ length: Math.floor(span.to) - span.from + 1 }, (_, i) => span.from + i)
 	);
 
 	/**
@@ -100,6 +100,16 @@
 	let thumb = $state({ left: 0, width: 0, visible: false });
 	let thumbDragging = $state(false);
 	let expanded = $state(false);
+	let pinnedLatest = false;
+
+	function pinToLatest() {
+		const scroller = viewportEl;
+		if (!scroller || pinnedLatest) return;
+		const overflow = scroller.scrollWidth - scroller.clientWidth;
+		if (overflow <= 1) return;
+		scroller.scrollLeft = overflow;
+		pinnedLatest = true;
+	}
 
 	function syncThumb() {
 		const scroller = viewportEl;
@@ -172,8 +182,12 @@
 	$effect(() => {
 		const scroller = viewportEl;
 		if (!scroller) return;
-		syncThumb();
-		const ro = new ResizeObserver(syncThumb);
+		const sync = () => {
+			pinToLatest();
+			syncThumb();
+		};
+		sync();
+		const ro = new ResizeObserver(sync);
 		ro.observe(scroller);
 		if (canvasEl) ro.observe(canvasEl);
 		if (hostEl) ro.observe(hostEl);
