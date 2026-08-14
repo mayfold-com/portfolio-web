@@ -2386,6 +2386,16 @@
 			if (scroller.scrollTop < 0) scroller.scrollTop = 0;
 			syncTopOverscrollLock();
 			updateScrollThumb();
+			if (scroller.scrollTop > DEAD_ZONE) hideCloseHint();
+			else if (
+				scroller.scrollTop <= 0.5 &&
+				rawPull <= DEAD_ZONE &&
+				contentVisible &&
+				!closeRequested &&
+				phase === 'open'
+			) {
+				hintVisible = true;
+			}
 		};
 
 		scroller.addEventListener('scroll', onScroll, passive);
@@ -2493,10 +2503,18 @@
 				</svg>
 			</button>
 
+			<p
+				class="close-hint"
+				class:visible={hintVisible && contentVisible && canDismiss}
+				aria-hidden={!(hintVisible && contentVisible && canDismiss)}
+			>
+				Scroll up or press <kbd>esc</kbd> to close
+			</p>
+
 			<div bind:this={ringEl} class="dismiss-ring" aria-hidden="true">
-				<svg viewBox="0 0 24 24">
-					<circle class="ring-track" cx="12" cy="12" r="10" />
-					<circle class="ring-progress" cx="12" cy="12" r="10" />
+				<svg viewBox="0 0 40 40">
+					<circle class="ring-track" cx="20" cy="20" r="17" />
+					<circle class="ring-progress" cx="20" cy="20" r="17" />
 				</svg>
 			</div>
 
@@ -2545,14 +2563,6 @@
 							></div>
 						{/if}
 					</div>
-
-					<p
-						class="close-hint"
-						class:visible={hintVisible && contentVisible && canDismiss}
-						aria-hidden={!(hintVisible && contentVisible && canDismiss)}
-					>
-						Scroll up or press <kbd>esc</kbd> to close
-					</p>
 
 					<div class="caption">
 						<div class="caption-inner">
@@ -3426,24 +3436,34 @@
 		appearance: none;
 		position: absolute;
 		z-index: 9;
-		top: 10px;
-		left: 10px;
+		top: calc(1.75rem - 24px);
+		left: calc(1.75rem - 24px);
 		display: grid;
 		place-items: center;
-		width: 16px;
-		height: 16px;
+		width: 48px;
+		height: 48px;
 		margin: 0;
 		padding: 0;
 		border: 0;
-		border-radius: 999px;
-		background: rgb(70 70 70 / 0.55);
+		border-radius: 0;
+		background: transparent;
 		color: #fff;
 		cursor: pointer;
 		opacity: 0;
 		pointer-events: none;
-		transition:
-			background-color 140ms ease,
-			opacity 180ms cubic-bezier(0.22, 1, 0.36, 1);
+		transition: opacity 180ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.sheet-close::before {
+		content: '';
+		position: absolute;
+		width: 24px;
+		height: 24px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.05);
+		backdrop-filter: blur(40px);
+		-webkit-backdrop-filter: blur(40px);
+		transition: background-color 140ms ease;
 	}
 
 	.sheet-close.visible {
@@ -3452,47 +3472,41 @@
 	}
 
 	.sheet-close svg {
+		position: relative;
 		display: block;
-		width: 8px;
-		height: 8px;
-		opacity: 0;
-		transition: opacity 140ms ease;
+		width: 10px;
+		height: 10px;
 	}
 
-	.sheet-close:hover {
-		background: rgb(70 70 70 / 0.28);
-	}
-
-	.sheet-close:hover svg {
-		opacity: 1;
+	.sheet-close:hover::before {
+		background: rgb(255 255 255 / 0.12);
 	}
 
 	.sheet-close:focus-visible {
+		outline: none;
+	}
+
+	.sheet-close:focus-visible::before {
 		outline: 2px solid #fff;
 		outline-offset: 2px;
 	}
 
-	.sheet-close:focus-visible svg {
-		opacity: 1;
-	}
-
-	/* Lives in .stage so it scrolls away with the hero — not sticky to the sheet. */
 	.close-hint {
 		position: absolute;
-		top: 28px;
-		left: 50%;
-		z-index: 3;
+		top: 1.75rem;
+		left: calc(1.75rem + 22px);
+		z-index: 9;
 		margin: 0;
-		padding: 0 1rem;
+		padding: 0;
 		width: max-content;
-		max-width: calc(100% - 2rem);
-		transform: translate(-50%, 6px);
+		max-width: calc(100% - 1.75rem - 2.5rem);
+		transform: translateY(calc(-50% + 6px));
 		font-size: 13px;
 		font-weight: var(--font-weight, 500);
 		line-height: 1.35;
 		letter-spacing: 0.01em;
 		color: rgb(255 255 255 / 0.6);
-		text-align: center;
+		text-align: left;
 		opacity: 0;
 		pointer-events: none;
 		transition:
@@ -3502,7 +3516,7 @@
 
 	.close-hint.visible {
 		opacity: 1;
-		transform: translate(-50%, 0);
+		transform: translateY(-50%);
 		color: transparent;
 		background-image: linear-gradient(
 			100deg,
@@ -4115,15 +4129,16 @@
 	}
 
 	.dismiss-ring {
-		--ring-len: 62.832;
+		--ring-len: 106.814;
 		position: absolute;
-		top: 44px;
-		left: 50%;
+		top: calc(1.75rem - 20px);
+		left: calc(1.75rem - 20px);
 		z-index: 8;
-		width: 24px;
-		height: 24px;
+		width: 40px;
+		height: 40px;
 		opacity: 0;
-		transform: translate(-50%, -50%) scale(0.72);
+		transform: scale(0.72);
+		transform-origin: center;
 		pointer-events: none;
 		transition:
 			opacity 180ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -4131,13 +4146,14 @@
 	}
 
 	.card.figure-filled > .dismiss-ring,
-	.card.figure-filled > .sheet-close {
+	.card.figure-filled > .sheet-close,
+	.card.figure-filled > .close-hint {
 		visibility: hidden;
 	}
 
 	.dismiss-ring.active {
 		opacity: clamp(0.35, calc(var(--ring-progress, 0) * 2.2), 1);
-		transform: translate(-50%, -50%) scale(1);
+		transform: scale(1);
 	}
 
 	.dismiss-ring svg {
@@ -4150,7 +4166,7 @@
 	.ring-track,
 	.ring-progress {
 		fill: none;
-		stroke-width: 3;
+		stroke-width: 1.75;
 	}
 
 	.ring-track {

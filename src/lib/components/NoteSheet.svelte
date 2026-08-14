@@ -965,6 +965,16 @@
 			if (scroller.scrollTop < 0) scroller.scrollTop = 0;
 			syncTopOverscrollLock();
 			updateScrollThumb();
+			if (scroller.scrollTop > DEAD_ZONE) hideCloseHint();
+			else if (
+				scroller.scrollTop <= 0.5 &&
+				rawPull <= DEAD_ZONE &&
+				contentVisible &&
+				!closeRequested &&
+				phase === 'open'
+			) {
+				hintVisible = true;
+			}
 		};
 		scroller.addEventListener('scroll', onScroll, passive);
 		syncTopOverscrollLock();
@@ -1041,10 +1051,37 @@
 			tabindex="-1"
 			style:--sheet-h="{sheetH}px"
 		>
+			<button
+				type="button"
+				class="sheet-close"
+				class:visible={contentVisible && canDismiss && !morphing}
+				tabindex={contentVisible && canDismiss && !morphing ? 0 : -1}
+				aria-label="Close"
+				onclick={() => dismissWithScrollFirst()}
+			>
+				<svg viewBox="0 0 8 8" aria-hidden="true">
+					<path
+						d="M1.5 1.5l5 5M6.5 1.5l-5 5"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.2"
+						stroke-linecap="round"
+					/>
+				</svg>
+			</button>
+
+			<p
+				class="close-hint"
+				class:visible={hintVisible && contentVisible && canDismiss}
+				aria-hidden={!(hintVisible && contentVisible && canDismiss)}
+			>
+				Scroll up or press <kbd>esc</kbd> to close
+			</p>
+
 			<div bind:this={ringEl} class="dismiss-ring" aria-hidden="true">
-				<svg viewBox="0 0 24 24">
-					<circle class="ring-track" cx="12" cy="12" r="10" />
-					<circle class="ring-progress" cx="12" cy="12" r="10" />
+				<svg viewBox="0 0 40 40">
+					<circle class="ring-track" cx="20" cy="20" r="17" />
+					<circle class="ring-progress" cx="20" cy="20" r="17" />
 				</svg>
 			</div>
 
@@ -1067,14 +1104,6 @@
 
 			<div class="scroller" bind:this={scrollerEl} tabindex="-1">
 				<div class="sheet-flow">
-				<p
-					class="close-hint"
-					class:visible={hintVisible && contentVisible && canDismiss}
-					aria-hidden={!(hintVisible && contentVisible && canDismiss)}
-				>
-					Scroll up or press <kbd>esc</kbd> to close
-				</p>
-
 				<div class="details">
 					<div class="details-inner">
 						{#snippet rich(text: string)}
@@ -1230,10 +1259,70 @@
 
 	.card.closing .details,
 	.card.closing .dismiss-ring,
-	.card.closing .close-hint {
+	.card.closing .close-hint,
+	.card.closing .sheet-close {
 		opacity: 0 !important;
 		pointer-events: none !important;
 		visibility: hidden;
+	}
+
+	.sheet-close {
+		appearance: none;
+		position: absolute;
+		z-index: 9;
+		top: calc(1.75rem - 24px);
+		left: calc(1.75rem - 24px);
+		display: grid;
+		place-items: center;
+		width: 48px;
+		height: 48px;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
+		color: var(--color-text);
+		cursor: pointer;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 180ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.sheet-close::before {
+		content: '';
+		position: absolute;
+		width: 24px;
+		height: 24px;
+		border-radius: 999px;
+		background: rgb(255 255 255 / 0.05);
+		backdrop-filter: blur(40px);
+		-webkit-backdrop-filter: blur(40px);
+		transition: background-color 140ms ease;
+	}
+
+	.sheet-close.visible {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.sheet-close svg {
+		position: relative;
+		display: block;
+		width: 10px;
+		height: 10px;
+	}
+
+	.sheet-close:hover::before {
+		background: rgb(255 255 255 / 0.12);
+	}
+
+	.sheet-close:focus-visible {
+		outline: none;
+	}
+
+	.sheet-close:focus-visible::before {
+		outline: 2px solid var(--color-text);
+		outline-offset: 2px;
 	}
 
 	.details-inner {
@@ -1374,27 +1463,30 @@
 
 	.close-hint {
 		position: absolute;
-		top: 28px;
-		left: 50%;
-		z-index: 3;
+		top: 1.75rem;
+		left: calc(1.75rem + 22px);
+		z-index: 9;
 		margin: 0;
-		padding: 0 1rem;
+		padding: 0;
 		width: max-content;
-		max-width: calc(100% - 2rem);
-		transform: translateX(-50%);
+		max-width: calc(100% - 1.75rem - 2.5rem);
+		transform: translateY(calc(-50% + 6px));
 		font-size: 13px;
 		font-weight: var(--font-weight, 500);
 		line-height: 1.35;
 		letter-spacing: 0.01em;
 		color: var(--color-muted);
-		text-align: center;
+		text-align: left;
 		opacity: 0;
 		pointer-events: none;
-		transition: opacity 280ms ease;
+		transition:
+			opacity 280ms cubic-bezier(0.22, 1, 0.36, 1),
+			transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
 	.close-hint.visible {
 		opacity: 1;
+		transform: translateY(-50%);
 	}
 
 	.close-hint kbd {
@@ -1404,19 +1496,25 @@
 	}
 
 	.dismiss-ring {
+		--ring-len: 106.814;
 		position: absolute;
-		top: 1.1rem;
-		left: 50%;
-		z-index: 10;
-		width: 1.65rem;
-		height: 1.65rem;
-		transform: translateX(-50%);
+		top: calc(1.75rem - 20px);
+		left: calc(1.75rem - 20px);
+		z-index: 8;
+		width: 40px;
+		height: 40px;
 		opacity: 0;
+		transform: scale(0.72);
+		transform-origin: center;
 		pointer-events: none;
+		transition:
+			opacity 180ms cubic-bezier(0.22, 1, 0.36, 1),
+			transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
 	.dismiss-ring.active {
-		opacity: 1;
+		opacity: clamp(0.35, calc(var(--ring-progress, 0) * 2.2), 1);
+		transform: scale(1);
 	}
 
 	.dismiss-ring svg {
@@ -1429,7 +1527,7 @@
 	.ring-track,
 	.ring-progress {
 		fill: none;
-		stroke-width: 2.2;
+		stroke-width: 1.75;
 	}
 
 	.ring-track {
@@ -1438,9 +1536,9 @@
 
 	.ring-progress {
 		stroke: var(--color-text);
-		stroke-dasharray: 62.83;
-		stroke-dashoffset: calc(62.83 * (1 - var(--ring-progress, 0)));
 		stroke-linecap: round;
+		stroke-dasharray: var(--ring-len);
+		stroke-dashoffset: calc(var(--ring-len) * (1 - var(--ring-progress, 0)));
 	}
 
 	@media (max-width: 800px) {
