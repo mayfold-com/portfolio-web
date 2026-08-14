@@ -7,6 +7,7 @@ declare global {
 		// interface PageData {}
 		interface PageState {
 			projectId?: string;
+			noteId?: string;
 		}
 		interface Platform {
 			env: Env;

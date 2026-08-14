@@ -306,9 +306,10 @@
 
 	.card-desc {
 		font-size: 15px;
-		line-height: 1.45;
+		font-weight: var(--font-weight, 500);
+		line-height: 1.55;
 		color: var(--color-text);
-		opacity: 0.4;
+		opacity: 0.45;
 	}
 
 	@media (max-width: 800px) {

@@ -12,7 +12,7 @@ export const profile = {
 export const navItems = [
 	{ href: '/', label: 'Naim Chayata' },
 	{ href: '/work', label: 'Work' },
-	{ href: '/craft', label: 'Craft' },
+	{ href: '/notes', label: 'Notes' },
 	{ href: '/resume', label: 'Resume' }
 ] as const;
 
@@ -551,26 +551,571 @@ export const testimonials = [
 	}
 ];
 
-export const craftNotes = [
+export type NoteBlock =
+	| { type: 'heading'; text: string }
+	| { type: 'paragraph'; text: string }
+	| { type: 'list'; items: string[] }
+	| { type: 'figure'; caption: string; ratio?: CaseFigureRatio }
+	| { type: 'diagram'; kind: import('$lib/components/NoteDiagram.svelte').NoteDiagramKind }
+	| { type: 'footnotes'; items: { id: string; text: string }[] };
+
+export type Note = {
+	slug: string;
+	title: string;
+	/** ISO date, `YYYY-MM-DD` */
+	date: string;
+	meta?: string;
+	description: string;
+	body: NoteBlock[];
+};
+
+export function noteDateParts(date: string) {
+	const [year, month, day] = date.split('-');
+	return { year, dayMonth: `${day}/${month}` };
+}
+
+export const notes: Note[] = [
 	{
-		title: 'Design systems in a growing product',
-		meta: 'Practice',
-		description:
-			'What stuck from Adyen’s first design system: which parts aged well, and which we had to rip out once the product got bigger.'
+		slug: 'how-to-stay-sane-while-building-with-ai',
+		title: 'How to stay sane while building with AI',
+		date: '2026-08-14',
+		description: 'Keeping a clear picture of the work while models run in parallel.',
+		body: [
+			{
+				type: 'paragraph',
+				text: 'AI coding tools gave me a new bad habit: starting work while I wait for other work.'
+			},
+			{
+				type: 'paragraph',
+				text: 'I send a task to a model. The response takes a while, so I open another terminal and start something else. That task pauses too. Soon I have three agents changing three parts of the same product.'
+			},
+			{
+				type: 'paragraph',
+				text: 'For a few minutes, this feels very productive.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Then one agent changes the data model. Another still assumes the old model exists. A third has redesigned the page that the first one just removed.'
+			},
+			{
+				type: 'paragraph',
+				text: 'I spend the next hour finding out what happened.'
+			},
+			{
+				type: 'diagram',
+				kind: 'collision'
+			},
+			{
+				type: 'heading',
+				text: 'Speed changes how I work'
+			},
+			{
+				type: 'paragraph',
+				text: 'I assumed that the strongest model would always save the most time. In practice, response time changes my behaviour.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A quick response keeps the problem in my head. I can try something, see the result, and correct it while I still remember why I made the previous choice.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A slow response creates an empty space. I tend to fill that space with another task.'
+			},
+			{
+				type: 'paragraph',
+				text: 'At the moment, I often enjoy building with Grok for this reason. It responds fast enough to feel like a continuous exchange. I stay with one problem for longer.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A deeper GPT run may produce a stronger answer on a difficult task. Yet the value drops when waiting causes me to split my attention across several branches.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The expensive part is no longer writing the code. It is keeping a clear picture of what all the code is doing.'
+			},
+			{
+				type: 'diagram',
+				kind: 'wait'
+			},
+			{
+				type: 'heading',
+				text: 'Match the model to the loop'
+			},
+			{
+				type: 'paragraph',
+				text: 'I now choose a model based on the kind of attention the work needs.'
+			},
+			{
+				type: 'paragraph',
+				text: 'I use a fast model when I am exploring a flow, fixing a small bug, changing copy, or working through an interface one decision at a time. The short feedback loop matters more than a perfect first answer.'
+			},
+			{
+				type: 'paragraph',
+				text: 'I use a slower model for work that can stand on its own. This can be an architecture review, a migration plan, a difficult investigation, or a final critique. I give it clear boundaries and a result I can check.'
+			},
+			{
+				type: 'paragraph',
+				text: 'I also try to keep one active branch. Parallel work is useful when the tasks are truly separate. Most of my tasks are less separate than they first appear.'
+			},
+			{
+				type: 'paragraph',
+				text: 'When I catch myself opening a third agent, I stop and ask a plain question: what am I waiting for?'
+			},
+			{
+				type: 'paragraph',
+				text: 'Often I can make the current task smaller. Sometimes I need to let the slow model finish. Starting more work rarely makes it finish sooner.'
+			},
+			{
+				type: 'diagram',
+				kind: 'match'
+			},
+			{
+				type: 'paragraph',
+				text: 'The best model on a benchmark may not be the best model for my state of mind.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The best one helps me finish the thing in front of me.'
+			}
+		]
 	},
 	{
-		title: 'Making AI photos briefable',
-		meta: 'Mayfold',
-		description:
-			'Consistency, fabric, light. The boring stuff that decides whether a generated image is usable twice in a row.'
+		slug: 'build-the-rough-version-first',
+		title: 'Build the rough version first',
+		date: '2026-05-21',
+		description: 'A working version argues back. A static screen does not.',
+		body: [
+			{
+				type: 'paragraph',
+				text: 'AI can produce a polished mistake at impressive speed.'
+			},
+			{
+				type: 'paragraph',
+				text: 'For years, I started most product work in Figma. I still use it, but often later in the process. When I build with AI, I begin with a rough working flow.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The first version can be ugly. It can use plain buttons, poor spacing, and the wrong typeface. It only needs to let me use the idea.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A static screen lets me imagine that a flow works. A working version argues back.'
+			},
+			{
+				type: 'diagram',
+				kind: 'argue'
+			},
+			{
+				type: 'heading',
+				text: 'The product appears between the screens'
+			},
+			{
+				type: 'paragraph',
+				text: 'I usually start in Cursor, Claude Code, or Codex. I ask for the shortest version of the main journey. I spend few tokens on visual design.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Then I use it.'
+			},
+			{
+				type: 'paragraph',
+				text: 'That is when the missing work appears.'
+			},
+			{
+				type: 'paragraph',
+				text: 'What happens while the page loads? Can I go back without losing my choices? What does an empty account look like? What if the API fails after the user has paid? Is this second step doing any useful work?'
+			},
+			{
+				type: 'paragraph',
+				text: 'These questions are easy to miss when every screen is a tidy frame. They become hard to ignore when I must click through the product myself.'
+			},
+			{
+				type: 'diagram',
+				kind: 'gaps'
+			},
+			{
+				type: 'paragraph',
+				text: 'AI makes this loop much faster. I can change the order, remove a step, or replace the whole approach before I have invested much in it.'
+			},
+			{
+				type: 'paragraph',
+				text: 'That only works if I let the first version remain disposable.'
+			},
+			{
+				type: 'heading',
+				text: 'Polish what survives'
+			},
+			{
+				type: 'paragraph',
+				text: 'I return to Figma when the flow stops changing every ten minutes.'
+			},
+			{
+				type: 'paragraph',
+				text: 'At that point, I know which screens matter. I know where the product needs hierarchy and where it needs restraint. I can work on type, spacing, motion, and details without using visual design to cover a weak idea.'
+			},
+			{
+				type: 'paragraph',
+				text: 'My order of work now looks like this:'
+			},
+			{
+				type: 'list',
+				items: [
+					'Build the shortest working journey.',
+					'Use it as if it were already live.',
+					'fix the problems I can feel.',
+					'Remove a step.',
+					'Design the version that survived.'
+				]
+			},
+			{
+				type: 'diagram',
+				kind: 'survive'
+			},
+			{
+				type: 'paragraph',
+				text: 'The sequence is not strict. I still sketch and explore. I still move between code and Figma. The important part is that polish comes after contact with the product.'
+			},
+			{
+				type: 'paragraph',
+				text: 'AI makes software easier to create. It also makes it easier to create too much of the wrong thing.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The rough version protects me from that. It lets me touch the idea before I start admiring it.'
+			}
+		]
 	},
 	{
-		title: 'Working with almost no brief',
-		meta: 'Studio',
-		description:
-			'Notes from Ristretto and Mayfold on starting when the problem isn’t clear yet, and how not to fake certainty.'
+		slug: 'change-has-a-budget',
+		title: 'Change has a budget',
+		date: '2026-02-04',
+		description: 'The team and the user experience change at different speeds.',
+		body: [
+			{
+				type: 'paragraph',
+				text: 'I started thinking about change as a budget at Adyen.'
+			},
+			{
+				type: 'paragraph',
+				text: 'There were periods when we changed several parts of the merchant platform close together. Navigation moved, pages were rebuilt, and familiar actions found new homes. Each decision made sense on its own. From inside the team, the work formed one coherent direction.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Support heard a different story. Merchants contacted them because they could no longer find workflows they used every day. We had not always broken the task, but we had broken the route they knew.'
+			},
+			{
+				type: 'heading',
+				text: 'We had months. Merchants had one login.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The team lived through each change over weeks or months. We saw early designs, discussed trade-offs, and watched the new structure take shape. By the time it shipped, it already felt familiar to us.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A merchant could leave the platform on Monday and return on Tuesday to find that several parts of their routine had moved. They had none of the context we had built up along the way.'
+			},
+			{
+				type: 'paragraph',
+				text: 'That made me see familiarity as part of the product. People remember where things are, learn the language, and stop thinking about each click. Research I found later gave me a better way to describe this. Stable interface cues help people become faster and more accurate. When those cues move, that gain can disappear.[^1]'
+			},
+			{
+				type: 'diagram',
+				kind: 'timelines'
+			},
+			{
+				type: 'heading',
+				text: 'Support made the cost visible'
+			},
+			{
+				type: 'paragraph',
+				text: 'Questions such as “Where did this go?” became an alarm. One question could point to a minor problem. A pattern of similar questions told us that we had turned the change dial too far.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The phrase *change aversion* can make this reaction sound irrational. The questions from merchants did not feel irrational. They were trying to finish their work, and the knowledge that had made them fast no longer worked.'
+			},
+			{
+				type: 'paragraph',
+				text: 'There was no precise meter for this. A small change on a page used once a year cost little. Moving several parts of a daily workflow cost much more. Support helped us see when those costs had started to add up.'
+			},
+			{
+				type: 'diagram',
+				kind: 'questions'
+			},
+			{
+				type: 'heading',
+				text: 'Pace became part of the design'
+			},
+			{
+				type: 'paragraph',
+				text: 'After that, I paid more attention to how changes reached people, not only to the final design.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Smaller releases gave merchants time to rebuild their habits. They also gave us clearer feedback because we knew which change had caused it. Sometimes the old route needed to remain visible for a while. Sometimes an old term had to stay searchable, or a new workflow had to appear as an option before it became the default.'
+			},
+			{
+				type: 'paragraph',
+				text: 'One study found that people initially performed worse after switching to an interface that later proved more efficient. An intermediate version reduced that drop.[^2] That matched what I had seen: the transition needed design work too.'
+			},
+			{
+				type: 'diagram',
+				kind: 'versions'
+			},
+			{
+				type: 'paragraph',
+				text: 'That is still what I mean by a change budget. It is not a formula or an argument against ambitious redesigns. It is a reminder that the team and the user experience change at different speeds.'
+			},
+			{
+				type: 'paragraph',
+				text: 'AI now lets me alter a whole product in an afternoon. Users still arrive with yesterday’s map.'
+			},
+			{
+				type: 'footnotes',
+				items: [
+					{
+						id: '1',
+						text: 'Diego Garaialde et al., “[Quantifying the Impact of Making and Breaking Interface Habits](https://arxiv.org/abs/2005.06842),” *International Journal of Human–Computer Studies*, 2020.'
+					},
+					{
+						id: '2',
+						text: 'Benjamin Rosman et al., “[On User Behaviour Adaptation Under Interface Change](https://www.microsoft.com/en-us/research/publication/user-behaviour-adaptation-interface-change/),” *IUI 2014*.'
+					}
+				]
+			}
+		]
+	},
+	{
+		slug: 'adoption-is-a-convenience-problem',
+		title: 'Adoption is a convenience problem',
+		date: '2025-10-16',
+		description: 'People avoid shared tools when using them creates more work.',
+		body: [
+			{
+				type: 'paragraph',
+				text: 'When I became responsible for the design system at Adyen, there was no dedicated team behind it. An early style guide existed in Sketch and CSS, but many states and larger patterns were missing.'
+			},
+			{
+				type: 'paragraph',
+				text: 'I carried the work with designers and engineers who volunteered time alongside their main jobs. We all agreed that the product needed more consistency. Agreement was never the hard part.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The hard part was Tuesday afternoon, when a team needed to ship and the system did not have what they needed.'
+			},
+			{
+				type: 'paragraph',
+				text: 'They could wait for us or make something themselves. The second option usually won.'
+			},
+			{
+				type: 'heading',
+				text: 'The next deadline always wins'
+			},
+			{
+				type: 'paragraph',
+				text: 'We documented the system and presented it across the company. That helped people understand what was available. It did not make an incomplete system more useful.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Adoption improved when we worked on problems teams already had: missing states, navigation, account structures and patterns for common pages. Reusing the system slowly became faster than starting again.'
+			},
+			{
+				type: 'paragraph',
+				text: 'This changed how I thought about adoption. People rarely reject shared tools because they enjoy inconsistency. They avoid them when using them creates more work.'
+			},
+			{
+				type: 'paragraph',
+				text: 'If teams keep making their own version, the problem may not be alignment. The shared solution may still be too expensive.'
+			},
+			{
+				type: 'diagram',
+				kind: 'states'
+			},
+			{
+				type: 'heading',
+				text: 'A volunteer system has a ceiling'
+			},
+			{
+				type: 'paragraph',
+				text: 'The volunteer model had real benefits. Designers and engineers from different product teams brought actual problems into the system. They understood why decisions had been made and could see their own work reflected in it.'
+			},
+			{
+				type: 'paragraph',
+				text: 'It also meant that system work happened after product work.'
+			},
+			{
+				type: 'paragraph',
+				text: 'When a deadline moved, the volunteer returned to their main team. Maintenance, documentation and larger improvements had to wait. Important decisions depended on who happened to have time that week.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Nobody was doing anything wrong. The design system simply had no protected capacity.'
+			},
+			{
+				type: 'paragraph',
+				text: 'That changed when Adyen created a dedicated team. Components received sustained attention. Decisions no longer had to fit between other commitments. The team could plan ahead, support product teams and maintain both the design and code libraries.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Everything became easier.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A dedicated team did not make contributions from other teams less important. It gave those contributions somewhere to go.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Community gave the system relevance. The dedicated team gave it continuity.'
+			},
+			{
+				type: 'diagram',
+				kind: 'stages'
+			},
+			{
+				type: 'heading',
+				text: 'People still want to create'
+			},
+			{
+				type: 'paragraph',
+				text: 'Convenience only explains part of adoption.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Designers and engineers do not want to spend their careers assembling someone else’s LEGO set. They are creators. They see product and technical problems that a central team cannot predict, and they want to influence the tools they use.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A closed system can be quick to use until it no longer fits. Teams then work around it, create local components or force new behaviour into an old pattern.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Opening every decision to everyone creates a different problem. The library fills with local preferences and stops offering clear defaults.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The dedicated team became the steward of the system. Product teams remained contributors. That balance mattered.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Convenience creates usage. Ownership creates commitment.'
+			},
+			{
+				type: 'diagram',
+				kind: 'matrix'
+			},
+			{
+				type: 'heading',
+				text: 'Ownership needs a route'
+			},
+			{
+				type: 'paragraph',
+				text: 'Ownership does not mean accepting every request. It means people know how they can challenge and improve a decision.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A contribution should start with a real product problem. The team first checks whether an existing pattern can solve it. If that pattern fails, they explain where it fails and test another solution in the product.'
+			},
+			{
+				type: 'paragraph',
+				text: 'When the need is likely to return elsewhere, the dedicated team can bring the solution into the system.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The product team supplies context and evidence. The system team checks quality, accessibility and wider use. Both remain involved.'
+			},
+			{
+				type: 'paragraph',
+				text: 'This lets people contribute without turning the library into a collection of exceptions.'
+			},
+			{
+				type: 'diagram',
+				kind: 'loop'
+			},
+			{
+				type: 'heading',
+				text: 'Contributions need a moment'
+			},
+			{
+				type: 'paragraph',
+				text: 'A contribution can disappear surprisingly quickly. A new pattern gets reviewed, renamed and added to the library. The system improves, but the person behind the work becomes invisible.'
+			},
+			{
+				type: 'paragraph',
+				text: 'That is a missed opportunity.'
+			},
+			{
+				type: 'paragraph',
+				text: 'People should be able to point at part of the system and say, “I helped make that.” This creates pride. It also shows others that contribution is welcome and worth the effort.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Celebration does not need a ceremony. Show the work in a team demo. Name the designer and engineer in the changelog. Explain which product problem they solved and where the new pattern can now help others.'
+			},
+			{
+				type: 'paragraph',
+				text: 'This was especially important while the system relied on volunteers. They were spending time outside their main responsibilities. Recognition made that work visible.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A dedicated team should continue to publish the names and stories behind contributions. Otherwise, shared work can slowly look like the output of one central group.'
+			},
+			{
+				type: 'diagram',
+				kind: 'credit'
+			},
+			{
+				type: 'heading',
+				text: 'Measure pull'
+			},
+			{
+				type: 'paragraph',
+				text: 'A company can require teams to use a design system. That produces usage, but it does not prove that the system is healthy.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A healthy system has pull. Teams ask about a missing state before making their own. They report bugs in shared components. They bring useful patterns back from product work. Contributors return because the first contribution felt worthwhile.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Local copies and quiet workarounds are useful signals too. They show where the shared system has stopped helping.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The strongest sign of adoption is simple: people choose the system when nobody is checking.'
+			},
+			{
+				type: 'diagram',
+				kind: 'pull'
+			},
+			{
+				type: 'heading',
+				text: 'Make it easy to use and worth caring about'
+			},
+			{
+				type: 'paragraph',
+				text: 'If I started a design system today, I would protect a small team early. I would also keep the contribution path open and make good contributions visible.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The dedicated team should remove the burden of maintenance from volunteers. It should preserve their influence and give them credit.'
+			},
+			{
+				type: 'paragraph',
+				text: 'At Adyen, the system became real when designers and engineers reached for it during product work. It saved time, and they could still help decide where it went next. They could also feel proud when their work became useful to people outside their own team.'
+			},
+			{
+				type: 'paragraph',
+				text: 'The goal was to stop repeating settled decisions, so teams had more time for problems that were still new.'
+			}
+		]
 	}
 ];
+
+export function getNote(slug: string | null | undefined): Note | undefined {
+	if (!slug) return undefined;
+	return notes.find((note) => note.slug === slug);
+}
 
 export const elsewhere = [
 	{

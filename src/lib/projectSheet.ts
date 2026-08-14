@@ -61,9 +61,15 @@ export function projectIdFromPage(pageValue: {
 
 function hrefForProject(id: string | null, from = get(page).url): string {
 	const url = new URL(from);
+	url.searchParams.delete('note');
 	if (id) url.searchParams.set(PROJECT_PARAM, id);
 	else url.searchParams.delete(PROJECT_PARAM);
 	return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function projectPageState(id: string | null, current = get(page).state): App.PageState {
+	const { projectId: _projectId, noteId: _noteId, ...rest } = current;
+	return id ? { ...rest, projectId: id } : rest;
 }
 
 /** Card media node for a project — used for click morph and Back/Forward morph. */
@@ -230,14 +236,14 @@ export function openProject(
 		const current = get(page);
 		const href = hrefForProject(id, current.url);
 
-		if (current.state.projectId === id) {
+		if (current.state.projectId === id && !current.state.noteId) {
 			// already in sync
 		} else if (projectIdFromUrl(current.url) === id || projectIdFromUrl(new URL(location.href)) === id) {
 			// Shared / refreshed link — keep this history entry, attach dismissable state.
-			replaceState(href, { ...current.state, projectId: id });
+			replaceState(href, projectPageState(id, current.state));
 			projectHistoryMode = 'replace';
 		} else {
-			pushState(href, { ...current.state, projectId: id });
+			pushState(href, projectPageState(id, current.state));
 			projectHistoryMode = 'push';
 		}
 	}
@@ -252,8 +258,8 @@ export function hydrateProjectFromUrl(id: string) {
 	if (!browser) return;
 	const current = get(page);
 	hydratedFromUrlIds.add(id);
-	if (current.state.projectId === id) return;
-	replaceState(hrefForProject(id, current.url), { ...current.state, projectId: id });
+	if (current.state.projectId === id && !current.state.noteId) return;
+	replaceState(hrefForProject(id, current.url), projectPageState(id, current.state));
 	projectHistoryMode = 'replace';
 }
 
@@ -273,7 +279,7 @@ export function syncUrlAfterClose() {
 	const current = get(page);
 	const mode = projectHistoryMode;
 	projectHistoryMode = null;
-	const { projectId: _closedId, ...restState } = current.state;
+	const restState = projectPageState(null, current.state);
 
 	// Cold/shared link used replaceState — `goto` clears `page.url` (plain replaceState does not).
 	if (mode === 'replace') {

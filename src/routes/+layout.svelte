@@ -3,6 +3,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import GridToggle from '$lib/components/GridToggle.svelte';
 	import Nav from '$lib/components/Nav.svelte';
+	import NoteSheet from '$lib/components/NoteSheet.svelte';
 	import ProjectSheet from '$lib/components/ProjectSheet.svelte';
 	import ThemePicker from '$lib/components/ThemePicker.svelte';
 	import {
@@ -54,6 +55,7 @@
 </div>
 
 <ProjectSheet />
+<NoteSheet />
 <ThemePicker />
 <GridToggle />
 

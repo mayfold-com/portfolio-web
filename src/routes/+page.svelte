@@ -1,7 +1,8 @@
 <script lang="ts">
 	import MagneticCard from '$lib/components/MagneticCard.svelte';
 	import MagneticPill from '$lib/components/MagneticPill.svelte';
-	import { craftNotes, elsewhere, profile, roles, testimonials, workProjects } from '$lib/data';
+	import NotesList from '$lib/components/NotesList.svelte';
+	import { elsewhere, profile, roles, testimonials, workProjects } from '$lib/data';
 	import { openProject, openProjectId } from '$lib/projectSheet';
 
 	const featured = workProjects;
@@ -111,25 +112,13 @@
 		</ul>
 	</section>
 
-	<section class="section craft" aria-labelledby="craft-title">
+	<section class="section notes" aria-labelledby="notes-title">
 		<div class="section-head">
-			<h2 id="craft-title" class="section-title">Craft</h2>
-			<a class="section-link" href="/craft">All notes</a>
+			<h2 id="notes-title" class="section-title">Notes</h2>
+			<a class="section-link" href="/notes">All notes</a>
 		</div>
 
-		<ul class="note-list">
-			{#each craftNotes as note (note.title)}
-				<li>
-					<article>
-						<div class="note-row">
-							<h3>{note.title}</h3>
-							<span class="note-meta">{note.meta}</span>
-						</div>
-						<p>{note.description}</p>
-					</article>
-				</li>
-			{/each}
-		</ul>
+		<NotesList />
 	</section>
 
 	<section class="section elsewhere" aria-labelledby="elsewhere-title">
@@ -285,7 +274,6 @@
 	}
 
 	.role-list,
-	.note-list,
 	.link-list {
 		margin: 0;
 		padding: 0;
@@ -362,34 +350,6 @@
 		font-size: 0.9rem;
 		color: var(--color-muted);
 		line-height: 1.4;
-	}
-
-	.note-row {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 0.5rem 1rem;
-		margin-bottom: 0.35rem;
-	}
-
-	.note-list h3 {
-		margin: 0;
-		font-size: 1.05rem;
-		font-weight: var(--font-weight);
-		line-height: 1.3;
-	}
-
-	.note-meta {
-		color: var(--color-muted);
-		font-size: 0.85rem;
-	}
-
-	.note-list p {
-		margin: 0;
-		color: var(--color-muted);
-		font-size: 0.95rem;
-		line-height: 1.5;
 	}
 
 	.link-list a {

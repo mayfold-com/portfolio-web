@@ -2474,6 +2474,25 @@
 			tabindex="-1"
 			style:--sheet-h="{sheetH}px"
 		>
+			<button
+				type="button"
+				class="sheet-close"
+				class:visible={contentVisible && canDismiss && !figureFilled && !morphing}
+				tabindex={contentVisible && canDismiss && !figureFilled && !morphing ? 0 : -1}
+				aria-label="Close"
+				onclick={() => dismissWithScrollFirst()}
+			>
+				<svg viewBox="0 0 8 8" aria-hidden="true">
+					<path
+						d="M1.5 1.5l5 5M6.5 1.5l-5 5"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.2"
+						stroke-linecap="round"
+					/>
+				</svg>
+			</button>
+
 			<div bind:this={ringEl} class="dismiss-ring" aria-hidden="true">
 				<svg viewBox="0 0 24 24">
 					<circle class="ring-track" cx="12" cy="12" r="10" />
@@ -3396,10 +3415,65 @@
 	.card.closing .details,
 	.card.closing .caption,
 	.card.closing .dismiss-ring,
-	.card.closing .close-hint {
+	.card.closing .close-hint,
+	.card.closing .sheet-close {
 		opacity: 0 !important;
 		pointer-events: none !important;
 		visibility: hidden;
+	}
+
+	.sheet-close {
+		appearance: none;
+		position: absolute;
+		z-index: 9;
+		top: 10px;
+		left: 10px;
+		display: grid;
+		place-items: center;
+		width: 16px;
+		height: 16px;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		border-radius: 999px;
+		background: rgb(70 70 70 / 0.55);
+		color: #fff;
+		cursor: pointer;
+		opacity: 0;
+		pointer-events: none;
+		transition:
+			background-color 140ms ease,
+			opacity 180ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.sheet-close.visible {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.sheet-close svg {
+		display: block;
+		width: 8px;
+		height: 8px;
+		opacity: 0;
+		transition: opacity 140ms ease;
+	}
+
+	.sheet-close:hover {
+		background: rgb(70 70 70 / 0.28);
+	}
+
+	.sheet-close:hover svg {
+		opacity: 1;
+	}
+
+	.sheet-close:focus-visible {
+		outline: 2px solid #fff;
+		outline-offset: 2px;
+	}
+
+	.sheet-close:focus-visible svg {
+		opacity: 1;
 	}
 
 	/* Lives in .stage so it scrolls away with the hero — not sticky to the sheet. */
@@ -3569,9 +3643,10 @@
 
 	.caption p {
 		margin: 0;
-		font-size: clamp(0.95rem, 1.5vw, 1.05rem);
-		line-height: 1.5;
-		color: rgb(255 255 255 / 0.88);
+		font-size: 15px;
+		font-weight: var(--font-weight, 500);
+		line-height: 1.55;
+		color: rgb(255 255 255 / 0.55);
 	}
 
 	.details {
@@ -3622,9 +3697,11 @@
 
 	.coming-soon-copy {
 		margin: 0;
-		font-size: 1rem;
+		font-size: 15px;
+		font-weight: var(--font-weight, 500);
 		line-height: 1.55;
-		color: var(--color-muted);
+		color: var(--color-text);
+		opacity: 0.45;
 		max-width: 34rem;
 	}
 
@@ -3645,9 +3722,11 @@
 	.details-inner > p,
 	.case-copy {
 		margin: 0 0 0.95rem;
-		font-size: 1rem;
+		font-size: 15px;
+		font-weight: var(--font-weight, 500);
 		line-height: 1.55;
-		color: var(--color-muted);
+		color: var(--color-text);
+		opacity: 0.45;
 	}
 
 	.case-copy:last-of-type {
@@ -4051,7 +4130,8 @@
 			transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
-	.card.figure-filled > .dismiss-ring {
+	.card.figure-filled > .dismiss-ring,
+	.card.figure-filled > .sheet-close {
 		visibility: hidden;
 	}
 
@@ -4091,6 +4171,7 @@
 		.details,
 		.dismiss-ring,
 		.close-hint,
+		.sheet-close,
 		.figure-fill {
 			transition: none !important;
 			animation: none !important;
