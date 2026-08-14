@@ -4,6 +4,7 @@
 	import { tick, untrack } from 'svelte';
 	import { getWorkProject, type CaseFigureRatio } from '$lib/data';
 	import CaseFigureMagnet from '$lib/components/CaseFigureMagnet.svelte';
+	import SheetClose from '$lib/components/SheetClose.svelte';
 	import CaseDiagram from '$lib/components/CaseDiagram.svelte';
 	import MenuComponent from '$lib/components/MenuComponent.svelte';
 	import RoleTimeline from '$lib/components/RoleTimeline.svelte';
@@ -99,8 +100,11 @@
 	let pageScrollLockCleanup: (() => void) | undefined;
 	/** Element that opened the sheet — restore focus on close. */
 	let restoreFocusEl: HTMLElement | null = null;
-	/** “Scroll up or press esc” — hides on first wheel / scroll. */
+	/** “Click, scroll up, or press esc” — hides on first wheel / scroll. */
 	let hintVisible = $state(false);
+	let closeHot = $state(false);
+	let hintReady = false;
+	let hintTimer: ReturnType<typeof setTimeout> | undefined;
 	/** Custom overlay scrollbar (macOS hides native ones). */
 	let scrollThumb = $state({ top: 0, height: 0, visible: false });
 	let thumbDragging = $state(false);
@@ -1272,7 +1276,7 @@
 		paintRing(0);
 		if (phase === 'dismissing') phase = 'open';
 		// Bring the close hint back when pull-to-dismiss is cancelled.
-		if (contentVisible && !closeRequested) hintVisible = true;
+		revealCloseHint();
 		if (cardEl && expanded) {
 			const open = openRect ?? finalRect();
 			applyChrome(cardEl, open, !reduceMotion, {
@@ -1317,6 +1321,35 @@
 
 	function hideCloseHint() {
 		if (hintVisible) hintVisible = false;
+	}
+
+	function clearHintTimer() {
+		clearTimeout(hintTimer);
+		hintTimer = undefined;
+	}
+
+	function revealCloseHint() {
+		if (!hintReady || !contentVisible || closeRequested) return;
+		hintVisible = true;
+	}
+
+	function scheduleCloseHint() {
+		clearHintTimer();
+		hintReady = false;
+		hintVisible = false;
+		hintTimer = setTimeout(() => {
+			hintTimer = undefined;
+			hintReady = true;
+			if (
+				contentVisible &&
+				!closeRequested &&
+				phase === 'open' &&
+				rawPull <= DEAD_ZONE &&
+				(!scrollerEl || scrollerEl.scrollTop <= 0.5)
+			) {
+				hintVisible = true;
+			}
+		}, 5000);
 	}
 
 	const SCROLL_TRACK_PAD = 28;
@@ -2002,6 +2035,8 @@
 		rendered = false;
 		expanded = false;
 		contentVisible = false;
+		clearHintTimer();
+		hintReady = false;
 		hintVisible = false;
 		scrollThumb = { top: 0, height: 0, visible: false };
 		thumbDragging = false;
@@ -2319,7 +2354,7 @@
 		const revealContent = () => {
 			if (phase !== 'open') return;
 			contentVisible = true;
-			hintVisible = true;
+			scheduleCloseHint();
 			if (scrollerEl) scrollerEl.scrollTop = 0;
 			focusScroller();
 			requestAnimationFrame(updateScrollThumb);
@@ -2394,7 +2429,7 @@
 				!closeRequested &&
 				phase === 'open'
 			) {
-				hintVisible = true;
+				revealCloseHint();
 			}
 		};
 
@@ -2484,37 +2519,25 @@
 			tabindex="-1"
 			style:--sheet-h="{sheetH}px"
 		>
-			<button
-				type="button"
-				class="sheet-close"
-				class:visible={contentVisible && canDismiss && !figureFilled && !morphing}
-				tabindex={contentVisible && canDismiss && !figureFilled && !morphing ? 0 : -1}
-				aria-label="Close"
+			<SheetClose
+				visible={contentVisible && canDismiss && !figureFilled && !morphing && !isClosing}
+				tone="media"
+				bind:hot={closeHot}
 				onclick={() => dismissWithScrollFirst()}
-			>
-				<svg viewBox="0 0 8 8" aria-hidden="true">
-					<path
-						d="M1.5 1.5l5 5M6.5 1.5l-5 5"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.2"
-						stroke-linecap="round"
-					/>
-				</svg>
-			</button>
+			/>
 
 			<p
 				class="close-hint"
-				class:visible={hintVisible && contentVisible && canDismiss}
-				aria-hidden={!(hintVisible && contentVisible && canDismiss)}
+				class:visible={hintVisible && contentVisible && canDismiss && !closeHot}
+				aria-hidden={!(hintVisible && contentVisible && canDismiss && !closeHot)}
 			>
-				Scroll up or press <kbd>esc</kbd> to close
+				Click, scroll up, or press <kbd>esc</kbd> to close
 			</p>
 
 			<div bind:this={ringEl} class="dismiss-ring" aria-hidden="true">
-				<svg viewBox="0 0 40 40">
-					<circle class="ring-track" cx="20" cy="20" r="17" />
-					<circle class="ring-progress" cx="20" cy="20" r="17" />
+				<svg viewBox="0 0 36 36">
+					<circle class="ring-track" cx="18" cy="18" r="15" />
+					<circle class="ring-progress" cx="18" cy="18" r="15" />
 				</svg>
 			</div>
 
@@ -3425,70 +3448,10 @@
 	.card.closing .details,
 	.card.closing .caption,
 	.card.closing .dismiss-ring,
-	.card.closing .close-hint,
-	.card.closing .sheet-close {
+	.card.closing .close-hint {
 		opacity: 0 !important;
 		pointer-events: none !important;
 		visibility: hidden;
-	}
-
-	.sheet-close {
-		appearance: none;
-		position: absolute;
-		z-index: 9;
-		top: calc(1.75rem - 24px);
-		left: calc(1.75rem - 24px);
-		display: grid;
-		place-items: center;
-		width: 48px;
-		height: 48px;
-		margin: 0;
-		padding: 0;
-		border: 0;
-		border-radius: 0;
-		background: transparent;
-		color: #fff;
-		cursor: pointer;
-		opacity: 0;
-		pointer-events: none;
-		transition: opacity 180ms cubic-bezier(0.22, 1, 0.36, 1);
-	}
-
-	.sheet-close::before {
-		content: '';
-		position: absolute;
-		width: 24px;
-		height: 24px;
-		border-radius: 999px;
-		background: rgb(255 255 255 / 0.05);
-		backdrop-filter: blur(40px);
-		-webkit-backdrop-filter: blur(40px);
-		transition: background-color 140ms ease;
-	}
-
-	.sheet-close.visible {
-		opacity: 1;
-		pointer-events: auto;
-	}
-
-	.sheet-close svg {
-		position: relative;
-		display: block;
-		width: 10px;
-		height: 10px;
-	}
-
-	.sheet-close:hover::before {
-		background: rgb(255 255 255 / 0.12);
-	}
-
-	.sheet-close:focus-visible {
-		outline: none;
-	}
-
-	.sheet-close:focus-visible::before {
-		outline: 2px solid #fff;
-		outline-offset: 2px;
 	}
 
 	.close-hint {
@@ -3500,7 +3463,8 @@
 		padding: 0;
 		width: max-content;
 		max-width: calc(100% - 1.75rem - 2.5rem);
-		transform: translateY(calc(-50% + 6px));
+		transform-origin: left center;
+		transform: translateY(-50%) translateX(-10px) scale(0.64);
 		font-size: 13px;
 		font-weight: var(--font-weight, 500);
 		line-height: 1.35;
@@ -3516,7 +3480,7 @@
 
 	.close-hint.visible {
 		opacity: 1;
-		transform: translateY(-50%);
+		transform: translateY(-50%) translateX(0) scale(1);
 		color: transparent;
 		background-image: linear-gradient(
 			100deg,
@@ -4129,13 +4093,13 @@
 	}
 
 	.dismiss-ring {
-		--ring-len: 106.814;
+		--ring-len: 94.248;
 		position: absolute;
-		top: calc(1.75rem - 20px);
-		left: calc(1.75rem - 20px);
+		top: calc(1.75rem - 18px);
+		left: calc(1.75rem - 18px);
 		z-index: 8;
-		width: 40px;
-		height: 40px;
+		width: 36px;
+		height: 36px;
 		opacity: 0;
 		transform: scale(0.72);
 		transform-origin: center;
@@ -4146,7 +4110,6 @@
 	}
 
 	.card.figure-filled > .dismiss-ring,
-	.card.figure-filled > .sheet-close,
 	.card.figure-filled > .close-hint {
 		visibility: hidden;
 	}
@@ -4187,7 +4150,6 @@
 		.details,
 		.dismiss-ring,
 		.close-hint,
-		.sheet-close,
 		.figure-fill {
 			transition: none !important;
 			animation: none !important;

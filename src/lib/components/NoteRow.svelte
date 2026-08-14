@@ -20,10 +20,10 @@
 	}: Props = $props();
 </script>
 
-<button type="button" class="row {className}" class:lifted {...rest}>
+<button type="button" class="row {className}" class:lifted data-note-origin {...rest}>
 	<span class="copy">
 		<span class="heading">
-			<span class="title" data-note-origin>{title}</span>
+			<span class="title">{title}</span>
 		</span>
 		{#if summary}
 			<span class="summary">{summary}</span>
@@ -40,8 +40,10 @@
 		gap: 1.25rem;
 		width: 100%;
 		margin: 0;
-		padding: 0.7rem 0;
+		padding: 0.7rem 0.7rem;
+		margin-inline: -0.7rem;
 		border: 0;
+		border-radius: 0.55rem;
 		background: transparent;
 		color: inherit;
 		font: inherit;
@@ -114,9 +116,5 @@
 
 	.row.lifted {
 		pointer-events: none;
-	}
-
-	.row.lifted .title {
-		opacity: 0;
 	}
 </style>

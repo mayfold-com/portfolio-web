@@ -27,7 +27,12 @@
 
 	$effect(() => {
 		const unsubscribe = openNoteId.subscribe((value) => {
+			const wasOpen = activeNoteId;
 			activeNoteId = value;
+			if (wasOpen && !value) {
+				hoveredYear = null;
+				yearY = Object.fromEntries(groups.map((group) => [group.year, 0]));
+			}
 		});
 		return unsubscribe;
 	});
@@ -63,6 +68,8 @@
 							moveYear(group.year, event.currentTarget);
 						}}
 						onfocusin={(event) => {
+							const target = event.target;
+							if (!(target instanceof HTMLElement) || !target.matches(':focus-visible')) return;
 							moveYear(group.year, event.currentTarget);
 						}}
 					>
@@ -74,8 +81,9 @@
 							datetime={note.date}
 							lifted={activeNoteId === note.slug}
 							aria-label="Open note: {note.title}"
-							onclick={() => {
-								openNote(note.slug);
+							onclick={(event) => {
+								const source = event.currentTarget;
+								openNote(note.slug, source instanceof HTMLElement ? source : undefined);
 							}}
 						/>
 					</li>

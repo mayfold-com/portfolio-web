@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import NoteDiagram from '$lib/components/NoteDiagram.svelte';
+	import SheetClose from '$lib/components/SheetClose.svelte';
 	import { getNote } from '$lib/data';
 	import { parseNoteInline } from '$lib/noteInline';
 	import {
@@ -13,6 +14,7 @@
 		type MotionPreset
 	} from '$lib/projectMotion';
 	import {
+		captureNoteOrigin,
 		clearNote,
 		hydrateNoteFromUrl,
 		noteIdFromPage,
@@ -45,10 +47,6 @@
 	let morphing = $state(false);
 	let motion = $state<MotionPreset>(getMotionPreset(defaultMotionPresetId, defaultCloseEaseId));
 
-	/** Rise and settle — long ease-out, for a card coming up from below. */
-	const NOTE_OPEN_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
-	/** Fall away — ease-in, so it commits downward instead of slowing at the fold. */
-	const NOTE_CLOSE_EASE = 'cubic-bezier(0.42, 0, 1, 1)';
 	let sheetH = $state(0);
 
 	let backdropEl: HTMLDivElement | undefined = $state();
@@ -72,6 +70,9 @@
 	let pageScrollLockCleanup: (() => void) | undefined;
 	let restoreFocusEl: HTMLElement | null = null;
 	let hintVisible = $state(false);
+	let closeHot = $state(false);
+	let hintReady = false;
+	let hintTimer: ReturnType<typeof setTimeout> | undefined;
 	let scrollThumb = $state({ top: 0, height: 0, visible: false });
 	let thumbDragging = $state(false);
 
@@ -150,6 +151,21 @@
 		});
 	}
 
+	function originRect(): Rect {
+		const live = id ? captureNoteOrigin(id) : null;
+		const thumb = live ?? origin;
+		if (thumb) {
+			return withPxRadius({
+				top: thumb.top,
+				left: thumb.left,
+				width: thumb.width,
+				height: thumb.height,
+				radius: thumb.radius || '0.55rem'
+			});
+		}
+		return dockRect();
+	}
+
 	function clamp01(t: number) {
 		return Math.min(1, Math.max(0, t));
 	}
@@ -187,7 +203,7 @@
 		opts?: { duration?: number; ease?: string }
 	) {
 		const duration = opts?.duration ?? motion.openDuration;
-		const ease = opts?.ease ?? NOTE_OPEN_EASE;
+		const ease = opts?.ease ?? motion.openEase;
 		const r = withPxRadius(rect);
 		const next = {
 			top: `${r.top}px`,
@@ -246,7 +262,7 @@
 	function paintDismissPreview(progress: number) {
 		if (!cardEl || !expanded || phase === 'closing') return;
 		const open = openRect ?? finalRect();
-		const dock = dockRect();
+		const dock = originRect();
 		const t = clamp01(progress) * DISMISS_PREVIEW;
 		applyChrome(cardEl, lerpRect(open, dock, t), false);
 		sheetH = lerpRect(open, dock, t).height;
@@ -298,12 +314,12 @@
 		clearPullSamples();
 		paintRing(0);
 		if (phase === 'dismissing') phase = 'open';
-		if (contentVisible && !closeRequested) hintVisible = true;
+		revealCloseHint();
 		if (cardEl && expanded) {
 			const open = openRect ?? finalRect();
 			applyChrome(cardEl, open, !reduceMotion, {
 				duration: Math.min(260, motion.openDuration + 40),
-				ease: NOTE_OPEN_EASE
+				ease: motion.openEase
 			});
 			sheetH = open.height;
 		}
@@ -337,6 +353,35 @@
 
 	function hideCloseHint() {
 		if (hintVisible) hintVisible = false;
+	}
+
+	function clearHintTimer() {
+		clearTimeout(hintTimer);
+		hintTimer = undefined;
+	}
+
+	function revealCloseHint() {
+		if (!hintReady || !contentVisible || closeRequested) return;
+		hintVisible = true;
+	}
+
+	function scheduleCloseHint() {
+		clearHintTimer();
+		hintReady = false;
+		hintVisible = false;
+		hintTimer = setTimeout(() => {
+			hintTimer = undefined;
+			hintReady = true;
+			if (
+				contentVisible &&
+				!closeRequested &&
+				phase === 'open' &&
+				rawPull <= DEAD_ZONE &&
+				(!scrollerEl || scrollerEl.scrollTop <= 0.5)
+			) {
+				hintVisible = true;
+			}
+		}, 5000);
 	}
 
 	function updateScrollThumb() {
@@ -506,7 +551,7 @@
 		}
 
 		const from = currentCardRect();
-		const to = dockRect();
+		const to = originRect();
 		phase = 'closing';
 		expanded = false;
 		morphing = true;
@@ -522,7 +567,7 @@
 				}
 				applyChrome(cardEl, to, true, {
 					duration: motion.closeDuration,
-					ease: NOTE_CLOSE_EASE
+					ease: motion.closeEase
 				});
 				clearTimeout(closeTimer);
 				closeTimer = setTimeout(() => finishClose(epoch), motion.closeDuration);
@@ -684,6 +729,8 @@
 		rendered = false;
 		expanded = false;
 		contentVisible = false;
+		clearHintTimer();
+		hintReady = false;
 		hintVisible = false;
 		scrollThumb = { top: 0, height: 0, visible: false };
 		thumbDragging = false;
@@ -911,15 +958,33 @@
 		clearPullSamples();
 		contentVisible = false;
 
+		const fromSource = untrack(() => {
+			const live = id ? captureNoteOrigin(id, null, { scrollIntoView: !origin }) : null;
+			if (live) {
+				origin = live;
+				noteOrigin.set(live);
+				return live;
+			}
+			return origin;
+		});
+
 		const target = finalRect();
 		openRect = target;
 		sheetH = target.height;
-		const from = dockRect();
+		const from: Rect = fromSource
+			? withPxRadius({
+					top: fromSource.top,
+					left: fromSource.left,
+					width: fromSource.width,
+					height: fromSource.height,
+					radius: fromSource.radius || '0.55rem'
+				})
+			: dockRect();
 
 		const revealContent = () => {
 			if (phase !== 'open') return;
 			contentVisible = true;
-			hintVisible = true;
+			scheduleCloseHint();
 			if (scrollerEl) scrollerEl.scrollTop = 0;
 			focusScroller();
 			requestAnimationFrame(updateScrollThumb);
@@ -936,10 +1001,7 @@
 			openFrame = requestAnimationFrame(() => {
 				openFrame = requestAnimationFrame(() => {
 					if (!cardEl || phase === 'closing') return;
-					applyChrome(cardEl, target, true, {
-						duration: motion.openDuration,
-						ease: NOTE_OPEN_EASE
-					});
+					applyChrome(cardEl, target, true);
 					expanded = true;
 					phase = 'open';
 					if (scrollerEl) scrollerEl.scrollTop = 0;
@@ -973,7 +1035,7 @@
 				!closeRequested &&
 				phase === 'open'
 			) {
-				hintVisible = true;
+				revealCloseHint();
 			}
 		};
 		scroller.addEventListener('scroll', onScroll, passive);
@@ -1034,7 +1096,7 @@
 		role="presentation"
 		style:--motion-backdrop="{expanded ? motion.backdropMs : motion.closeBackdropMs}ms"
 		style:--motion-content="{contentVisible ? motion.contentMs : motion.closeContentMs}ms"
-		style:--motion-ease={expanded ? NOTE_OPEN_EASE : NOTE_CLOSE_EASE}
+		style:--motion-ease={expanded ? motion.openEase : motion.closeEase}
 		onclick={onBackdropClick}
 	>
 		<div
@@ -1051,37 +1113,24 @@
 			tabindex="-1"
 			style:--sheet-h="{sheetH}px"
 		>
-			<button
-				type="button"
-				class="sheet-close"
-				class:visible={contentVisible && canDismiss && !morphing}
-				tabindex={contentVisible && canDismiss && !morphing ? 0 : -1}
-				aria-label="Close"
+			<SheetClose
+				visible={contentVisible && canDismiss && !morphing && !isClosing}
+				bind:hot={closeHot}
 				onclick={() => dismissWithScrollFirst()}
-			>
-				<svg viewBox="0 0 8 8" aria-hidden="true">
-					<path
-						d="M1.5 1.5l5 5M6.5 1.5l-5 5"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.2"
-						stroke-linecap="round"
-					/>
-				</svg>
-			</button>
+			/>
 
 			<p
 				class="close-hint"
-				class:visible={hintVisible && contentVisible && canDismiss}
-				aria-hidden={!(hintVisible && contentVisible && canDismiss)}
+				class:visible={hintVisible && contentVisible && canDismiss && !closeHot}
+				aria-hidden={!(hintVisible && contentVisible && canDismiss && !closeHot)}
 			>
-				Scroll up or press <kbd>esc</kbd> to close
+				Click, scroll up, or press <kbd>esc</kbd> to close
 			</p>
 
 			<div bind:this={ringEl} class="dismiss-ring" aria-hidden="true">
-				<svg viewBox="0 0 40 40">
-					<circle class="ring-track" cx="20" cy="20" r="17" />
-					<circle class="ring-progress" cx="20" cy="20" r="17" />
+				<svg viewBox="0 0 36 36">
+					<circle class="ring-track" cx="18" cy="18" r="15" />
+					<circle class="ring-progress" cx="18" cy="18" r="15" />
 				</svg>
 			</div>
 
@@ -1259,70 +1308,10 @@
 
 	.card.closing .details,
 	.card.closing .dismiss-ring,
-	.card.closing .close-hint,
-	.card.closing .sheet-close {
+	.card.closing .close-hint {
 		opacity: 0 !important;
 		pointer-events: none !important;
 		visibility: hidden;
-	}
-
-	.sheet-close {
-		appearance: none;
-		position: absolute;
-		z-index: 9;
-		top: calc(1.75rem - 24px);
-		left: calc(1.75rem - 24px);
-		display: grid;
-		place-items: center;
-		width: 48px;
-		height: 48px;
-		margin: 0;
-		padding: 0;
-		border: 0;
-		border-radius: 0;
-		background: transparent;
-		color: var(--color-text);
-		cursor: pointer;
-		opacity: 0;
-		pointer-events: none;
-		transition: opacity 180ms cubic-bezier(0.22, 1, 0.36, 1);
-	}
-
-	.sheet-close::before {
-		content: '';
-		position: absolute;
-		width: 24px;
-		height: 24px;
-		border-radius: 999px;
-		background: rgb(255 255 255 / 0.05);
-		backdrop-filter: blur(40px);
-		-webkit-backdrop-filter: blur(40px);
-		transition: background-color 140ms ease;
-	}
-
-	.sheet-close.visible {
-		opacity: 1;
-		pointer-events: auto;
-	}
-
-	.sheet-close svg {
-		position: relative;
-		display: block;
-		width: 10px;
-		height: 10px;
-	}
-
-	.sheet-close:hover::before {
-		background: rgb(255 255 255 / 0.12);
-	}
-
-	.sheet-close:focus-visible {
-		outline: none;
-	}
-
-	.sheet-close:focus-visible::before {
-		outline: 2px solid var(--color-text);
-		outline-offset: 2px;
 	}
 
 	.details-inner {
@@ -1470,7 +1459,8 @@
 		padding: 0;
 		width: max-content;
 		max-width: calc(100% - 1.75rem - 2.5rem);
-		transform: translateY(calc(-50% + 6px));
+		transform-origin: left center;
+		transform: translateY(-50%) translateX(-10px) scale(0.64);
 		font-size: 13px;
 		font-weight: var(--font-weight, 500);
 		line-height: 1.35;
@@ -1486,7 +1476,7 @@
 
 	.close-hint.visible {
 		opacity: 1;
-		transform: translateY(-50%);
+		transform: translateY(-50%) translateX(0) scale(1);
 	}
 
 	.close-hint kbd {
@@ -1496,13 +1486,13 @@
 	}
 
 	.dismiss-ring {
-		--ring-len: 106.814;
+		--ring-len: 94.248;
 		position: absolute;
-		top: calc(1.75rem - 20px);
-		left: calc(1.75rem - 20px);
+		top: calc(1.75rem - 18px);
+		left: calc(1.75rem - 18px);
 		z-index: 8;
-		width: 40px;
-		height: 40px;
+		width: 36px;
+		height: 36px;
 		opacity: 0;
 		transform: scale(0.72);
 		transform-origin: center;

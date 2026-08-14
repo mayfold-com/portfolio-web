@@ -14,7 +14,7 @@ export type NoteOrigin = {
 export const openNoteId = writable<string | null>(null);
 export const noteOrigin = writable<NoteOrigin | null>(null);
 
-/** Open at the settled window rect — no morph from the list. */
+/** Skip the list morph and open from the dock (shared / missing source). */
 export let noteOpensDirect = false;
 
 const NOTE_PARAM = 'note';
