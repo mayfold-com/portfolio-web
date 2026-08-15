@@ -4176,10 +4176,10 @@
 		}
 
 		.dismiss-ring {
-			top: calc(2rem + 10px);
+			top: calc(2rem + 2px);
 			left: 50%;
-			width: 36px;
-			height: 36px;
+			width: 52px;
+			height: 52px;
 			transform: translateX(-50%) scale(0.72);
 		}
 

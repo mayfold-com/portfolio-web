@@ -147,6 +147,16 @@
 			height: 56px;
 			transform: translateX(-50%);
 		}
+
+		.magnet {
+			width: 40px;
+			height: 40px;
+		}
+
+		svg {
+			width: 14px;
+			height: 14px;
+		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
