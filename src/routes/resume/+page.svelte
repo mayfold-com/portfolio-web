@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { profile, roles } from '$lib/data';
+	import { additionalRoles, profile, roles } from '$lib/data';
 </script>
 
 <svelte:head>
@@ -10,7 +10,7 @@
 	<h1 class="title">Resume</h1>
 
 	<section aria-labelledby="roles-heading">
-		<h2 id="roles-heading" class="sr-only">Roles</h2>
+		<h2 id="roles-heading" class="section-title">Experience</h2>
 		<ul class="roles">
 			{#each roles as role (`${role.title}-${role.company}-${role.dates}`)}
 				<li>
@@ -21,35 +21,46 @@
 					</p>
 					<span class="dates">{role.dates}</span>
 					<p class="item-description">{role.description}</p>
-					{#if role.cards}
-						<div class="cards" aria-hidden="true">
-							{#each Array(role.cards) as _, i (i)}
-								<div class="card"></div>
-							{/each}
-						</div>
-					{/if}
 				</li>
 			{/each}
 		</ul>
-		<p class="earlier">
-			<a href={profile.linkedin} target="_blank" rel="noopener noreferrer">
-				More detail on LinkedIn
-				<span class="external" aria-hidden="true">↗</span>
-			</a>
-		</p>
 	</section>
+
+	<section class="block" aria-labelledby="additional-heading">
+		<h2 id="additional-heading" class="section-title">Additional experience</h2>
+		<ul class="roles compact">
+			{#each additionalRoles as role (`${role.title}-${role.company}-${role.dates}`)}
+				<li>
+					<p class="headline">
+						<span class="role">{role.title}</span>
+						<span class="at"> @ </span>
+						<span class="company">{role.company}</span>
+					</p>
+					<span class="dates">{role.dates}</span>
+					<p class="item-description">{role.description}</p>
+				</li>
+			{/each}
+		</ul>
+	</section>
+
+	<p class="earlier">
+		<a href={profile.linkedin} target="_blank" rel="noopener noreferrer">
+			More detail on LinkedIn
+			<span class="external" aria-hidden="true">↗</span>
+		</a>
+	</p>
 </main>
 
 <style>
 	.page {
-		/* Columns 3–6; 7–8 stay empty */
-		width: var(--span-4);
-		max-width: 100%;
-		padding: 0 0 var(--page-pad);
+		width: min(100%, var(--content-span));
+		padding: 0 var(--page-pad) var(--page-pad);
+		padding-left: 0;
+		container-type: inline-size;
 	}
 
 	.title {
-		margin: var(--page-title-space) 0;
+		margin: var(--page-title-space) 0 clamp(2.75rem, 7vw, 4rem);
 		font-size: var(--page-title-size);
 		font-weight: var(--font-weight);
 		line-height: 1.15;
@@ -58,27 +69,33 @@
 		max-width: 100%;
 	}
 
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border: 0;
+	.section-title {
+		margin: 0 0 1.5rem;
+		font-size: clamp(1.15rem, 2vw, 1.35rem);
+		font-weight: var(--font-weight);
+		line-height: 1.25;
+		letter-spacing: -0.02em;
+		color: var(--color-text);
+	}
+
+	.block {
+		margin-top: 3.25rem;
+		width: min(100%, var(--span-4));
 	}
 
 	.roles {
 		margin: 0;
 		padding: 0;
 		list-style: none;
-		width: 100%;
+		width: min(100%, var(--span-4));
 	}
 
 	.roles li + li {
 		margin-top: 2.75rem;
+	}
+
+	.roles.compact li + li {
+		margin-top: 1.75rem;
 	}
 
 	.headline {
@@ -118,21 +135,6 @@
 		color: var(--color-body);
 	}
 
-	.cards {
-		/* Two cards × two columns across cols 3–6 */
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: var(--grid-gap);
-		margin-top: 1.25rem;
-		width: 100%;
-	}
-
-	.card {
-		aspect-ratio: 4 / 3;
-		border-radius: 1.1rem;
-		background: color-mix(in srgb, var(--color-text) 12%, var(--color-bg));
-	}
-
 	@media (max-width: 800px) {
 		.page {
 			width: 100%;
@@ -140,16 +142,11 @@
 		}
 	}
 
-	@media (max-width: 600px) {
-		.cards {
-			grid-template-columns: 1fr;
-		}
-	}
-
 	.earlier {
 		margin: 3rem 0 0;
 		font-size: 0.875rem;
 		line-height: 1.5;
+		width: min(100%, var(--span-4));
 	}
 
 	.earlier a {

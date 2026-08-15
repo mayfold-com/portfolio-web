@@ -3,14 +3,20 @@ export const profile = {
 	location: 'Utrecht, The Netherlands',
 	/** Two-line hero. Soft break is intentional. */
 	title: 'A design leader who never stopped making things.',
-	subline:
-		'I spent seven years at Adyen, moving from hands-on product design to leading designers, writers and researchers across its merchant, developer and checkout experiences. These days, I build products of my own.',
-	email: null as string | null,
+	titleMobile: "Hi, I'm Naim. A design leader who never stopped making things.",
+	email: 'naimchayata@gmail.com' as string | null,
 	linkedin: 'https://www.linkedin.com/in/naimchayata/'
 };
 
 export const navItems = [
 	{ href: '/', label: 'Naim Chayata' },
+	{ href: '/work', label: 'Work' },
+	{ href: '/notes', label: 'Notes' },
+	{ href: '/resume', label: 'Resume' }
+] as const;
+
+export const mobileNavItems = [
+	{ href: '/', label: 'Home' },
 	{ href: '/work', label: 'Work' },
 	{ href: '/notes', label: 'Notes' },
 	{ href: '/resume', label: 'Resume' }
@@ -32,6 +38,70 @@ export type CaseTimelineRole = {
 	/** Held alongside another title instead of after it. */
 	concurrent?: boolean;
 };
+
+/** Adyen titles shown in the case study and resume timelines. */
+export const adyenTimelineRoles: CaseTimelineRole[] = [
+	{
+		role: 'Product Designer',
+		start: '2018-06',
+		end: '2019-07'
+	},
+	{
+		role: 'Principal Product Designer',
+		start: '2019-07',
+		end: '2021-06'
+	},
+	{
+		role: 'Design System Lead',
+		start: '2018-06',
+		end: '2021-06',
+		concurrent: true
+	},
+	{
+		role: 'Engineering Team Lead',
+		start: '2021-06',
+		end: '2022-09'
+	},
+	{
+		role: 'Product Design Manager',
+		start: '2022-09',
+		end: '2024-01'
+	},
+	{
+		role: 'UX Manager',
+		start: '2024-01',
+		end: '2025-05'
+	}
+];
+
+/** Full career span for the resume page. */
+export const careerTimelineRoles: CaseTimelineRole[] = [
+	{
+		role: 'Product Designer · INTK',
+		start: '2014-09',
+		end: '2015-01'
+	},
+	{
+		role: 'Visual Designer · Yummygum',
+		start: '2015-03',
+		end: '2015-06'
+	},
+	{
+		role: 'Co-founder · Ristretto',
+		start: '2015-07',
+		end: '2022-01',
+		concurrent: true
+	},
+	...adyenTimelineRoles.map((role) => ({
+		...role,
+		role: `${role.role} · Adyen`
+	})),
+	{
+		role: 'Founder · Mayfold',
+		start: '2025-05',
+		end: '2026-08'
+	}
+];
 
 export type CasePhoneScreen = {
 	src?: string;
@@ -145,10 +215,8 @@ export type WorkProject = {
 	/** Short mock highlights for the project overlay */
 	highlights?: string[];
 	link?: { label: string; href: string };
-	/** Looping muted video used as card / thumb media (mp4) */
+	/** Looping muted video used as card / thumb media (WebM) */
 	video?: string;
-	/** Optional WebM sibling for cheaper decode where supported */
-	videoWebm?: string;
 	/** Still shown before the video is near the viewport */
 	poster?: string;
 	/** Homepage / work card height variant */
@@ -169,39 +237,7 @@ export const workProjects: WorkProject[] = [
 		caseStudy: [
 			{
 				type: 'timeline',
-				roles: [
-					{
-						role: 'Product Designer',
-						start: '2018-06',
-						end: '2019-07'
-					},
-					{
-						role: 'Principal Product Designer',
-						start: '2019-07',
-						end: '2021-06'
-					},
-					{
-						role: 'Design System Lead',
-						start: '2018-06',
-						end: '2021-06',
-						concurrent: true
-					},
-					{
-						role: 'Engineering Team Lead',
-						start: '2021-06',
-						end: '2022-09'
-					},
-					{
-						role: 'Product Design Manager',
-						start: '2022-09',
-						end: '2024-01'
-					},
-					{
-						role: 'UX Manager',
-						start: '2024-01',
-						end: '2025-05'
-					}
-				]
+				roles: adyenTimelineRoles
 			},
 			{
 				type: 'paragraph',
@@ -336,45 +372,23 @@ export const workProjects: WorkProject[] = [
 			'Coherence across languages and markets'
 		],
 		link: { label: 'adyen.com', href: 'https://www.adyen.com' },
-		video: '/media/adyen.mp4?v=1080',
+		video: '/media/adyen.webm',
 		poster: '/media/adyen-poster.jpg?v=1080',
 		cardSize: 'mid'
 	},
 	{
 		id: 'mayfold',
 		title: 'Mayfold',
-		meta: 'Founder — 2025–Present',
+		meta: 'AI photography — in development',
 		description:
-			'AI photography with the control of an art-directed shoot. Same product, same person, different outfits — convincing down to fabric and light.',
-		body: [
-			'Mayfold is my personal product lab for AI-enabled products. The main thread is fashion photography that holds up next to real shoots — consistency, fabric, light — not one-off demos.',
-			'I use it to stay hands-on across product, design, and implementation, and to test ideas without waiting on a brief.'
-		],
-		caseStudy: productStory({
-			idea: [
-				'Mayfold is my personal product lab for AI-enabled products. The main thread is fashion photography that holds up next to real shoots — consistency, fabric, light — not one-off demos.',
-				'I use it to stay hands-on across product, design, and implementation, and to test ideas without waiting on a brief.'
-			],
-			overview: {
-				type: 'figure',
-				ratio: 'wide',
-				src: '/media/mayfold-models.jpg',
-				caption: 'Browsing models in Mayfold',
-				framed: true
-			},
-			beats: []
-		}),
-		services: 'Product, Design, Engineering',
-		year: '2025 – Present',
-		role: 'Founder',
-		highlights: [
-			'AI fashion photography pipelines',
-			'End-to-end product experiments',
-			'Design + engineering in one loop'
-		],
+			'Mayfold brings the control of an art-directed shoot to AI photography, with products and people that stay convincing down to the smallest detail.',
+		body: [],
+		year: '2025',
+		role: 'Founder, product design and development',
+		stage: 'In development',
+		metaLabels: { role: 'Role' },
 		link: { label: 'mayfold.com', href: 'https://mayfold.com' },
-		video: '/media/mayfold.mp4',
-		poster: '/media/mayfold.jpg',
+		video: '/media/mayfold.webm?v=4',
 		cardSize: 'tall'
 	},
 	{
@@ -440,7 +454,8 @@ export const workProjects: WorkProject[] = [
 		role: 'Founder, product design and development',
 		stage: 'Preparing for closed beta',
 		metaLabels: { role: 'Role' },
-		link: { label: 'plekka.com', href: 'https://plekka.com' },
+		link: { label: 'preview.plekka.com', href: 'https://preview.plekka.com' },
+		video: '/media/plekka.webm',
 		highlights: [
 			'Live rate comparison with other booking sites',
 			'Saved hotels, bookings and upcoming trips',
@@ -460,77 +475,72 @@ export const workProjects: WorkProject[] = [
 		],
 		caseStudy: productStory({
 			idea: [
-				'One shared camera roll for a night with friends. Take a limited number of photos and see them together later.',
-				'The best part of a disposable camera is waiting. Nobody checks every shot or asks for a retake. The photos arrive after the night is over.',
-				'Rolls brings that constraint to your phone. One person starts a roll and invites the group. Everyone gets a set number of photos. The roll closes at a chosen time and the photos stay hidden until they are ready.'
+				'One shared camera roll for a night with friends.',
+				'Disposable cameras worked because of the wait. Nobody checked every shot or asked for a retake. The photos only arrived after the night was over.',
+				'Rolls brings that constraint to your phone. One person sets the rules. Friends join the same roll. Everyone gets a limited number of shots. The photos stay hidden until the roll closes and develops.'
 			],
-			overview: {
-				type: 'figure',
-				ratio: 'ultrawide',
-				src: '/media/rolls-flow.jpg',
-				caption: 'The whole night, in one flow',
-				background: '#111',
-				framed: true,
-				peek: true
-			},
 			beats: [
 				{
-					heading: 'One roll for the night',
+					heading: 'Pick the roll you’re on',
 					text: [
-						'The person creating the roll chooses its name, end time and photo limit. Friends join through a link or QR code.',
-						'Once inside, everyone uses the same simple camera. It shows which roll is active, who has joined and how many shots remain.'
+						'When you’re in more than one roll, you slide between them. Each one shows its end time, photo limit and who is sharing.',
+						'That keeps the night clear: you always know which roll the next shot belongs to — and you can leave one if you need to.'
 					],
 					media: [
 						{
-							type: 'phones',
-							screens: [{ caption: 'The camera', background: '#111' }]
+							type: 'figure',
+							ratio: 'wide',
+							src: '/media/rolls-select.png',
+							caption: 'Select a film roll',
+							framed: true,
+							scale: 0.456
 						}
 					]
 				},
 				{
-					heading: 'The photos can wait',
+					heading: 'Get everyone on the same roll',
 					text: [
-						'Every photo goes straight into the roll. There is no preview and no live gallery.',
-						'After the end time, the roll first appears as developing. When it is ready, everyone gets the same album and can see the night from the group’s point of view.'
+						'Friends join with a QR code or a link. You can see who is already in before anyone takes a photo.',
+						'The invite is meant to work in the room: hold up the code at the table, or send the link in the group chat.'
 					],
 					media: [
 						{
-							type: 'phones',
-							screens: [{ caption: 'No preview after a shot', background: '#111' }]
-						},
+							type: 'figure',
+							ratio: 'wide',
+							src: '/media/rolls-share.png',
+							caption: 'Invite friends',
+							framed: true,
+							scale: 0.456
+						}
+					]
+				},
+				{
+					heading: 'Shoot like film',
+					text: [
+						'Once inside, everyone uses the same simple camera. It shows which roll is active, who has joined and how many shots remain.',
+						'There is no preview and no live gallery. Every photo goes straight into the roll. The reveal is the point: when the roll is ready, the group gets one album and sees the night from everyone’s point of view.'
+					],
+					media: [
 						{
-							type: 'phones',
-							screens: [{ caption: 'The album', background: '#111' }]
+							type: 'figure',
+							ratio: 'wide',
+							src: '/media/rolls-camera.png',
+							caption: 'The camera',
+							framed: true,
+							scale: 0.456
 						}
 					]
 				}
 			],
 			status:
-				'We are now building the first working version. The first test is simple: will a group use Rolls for a real night out and return the next day to see the photos?'
+				'We are building the first working version. The next test is simple: will a group use Rolls for a real night out and come back the next day for the photos?'
 		}),
-		services: 'Concept, Product, Design',
-		year: '2025 – Present',
-		role: 'Concept and product design',
-		highlights: [
-			'Shared rolls with a photo limit',
-			'No preview until the roll is ready',
-			'Building the first working version'
-		],
-		poster: '/media/rolls-flow.jpg',
-		cardSize: 'short'
-	},
-	{
-		id: 'pomolo',
-		title: 'Pomolo',
-		meta: 'Coming soon',
-		description: 'A fuller write-up of this project is on the way.',
-		body: ['A fuller write-up of this project is on the way.'],
-		comingSoon: true,
+		role: 'Founder, product design and development',
 		year: '2026',
-		role: 'Founder',
-		video: '/media/pomolo.mp4',
-		poster: '/media/pomolo.jpg',
-		cardSize: 'wide'
+		stage: 'In development',
+		metaLabels: { role: 'Role' },
+		poster: '/media/rolls.jpg?v=2',
+		cardSize: 'short'
 	}
 ];
 
@@ -538,31 +548,6 @@ export function getWorkProject(id: string | null | undefined): WorkProject | und
 	if (!id) return undefined;
 	return workProjects.find((project) => project.id === id);
 }
-
-/** Homepage mock quotes — replace with real ones when ready. */
-export const testimonials = [
-	{
-		quote:
-			'Naim has a rare mix of product taste and systems thinking. He kept the merchant experience coherent while the platform and the team scaled across markets.',
-		name: 'Sarah Chen',
-		role: 'VP Product',
-		company: 'Adyen'
-	},
-	{
-		quote:
-			'He turns ambiguous briefs into something you can actually ship. Clear priorities, sharp critique, and no theater — just good product judgment.',
-		name: 'Marcus Veld',
-		role: 'Engineering Manager',
-		company: 'Adyen'
-	},
-	{
-		quote:
-			'Working with Naim at Ristretto felt like having a co-founder in the room. He cared as much about the craft as about whether the thing would hold up for users.',
-		name: 'Elena Rossi',
-		role: 'Founder',
-		company: 'Studio client'
-	}
-];
 
 export type NoteBlock =
 	| { type: 'heading'; text: string }
@@ -975,10 +960,6 @@ export const notes: Note[] = [
 				text: 'They could wait for us or make something themselves. The second option usually won.'
 			},
 			{
-				type: 'diagram',
-				kind: 'deadline'
-			},
-			{
 				type: 'heading',
 				text: 'The next deadline always wins'
 			},
@@ -1183,62 +1164,99 @@ export const elsewhere = [
 
 export const roles = [
 	{
-		title: 'Founder',
+		title: 'Product builder',
 		company: 'Mayfold',
 		dates: 'May 2025 – Present',
 		description:
-			'Mayfold is my personal product lab, where I spend spare time building and experimenting with AI-enabled products. It helps me learn new tools, test ideas, stay hands-on across product, design, implementation.',
-		cards: 2
+			'Building and testing AI-enabled products with SvelteKit, TypeScript, model APIs and cloud services. Working on multi-step generation workflows with orchestration, quality checks and high-res output, and using AI-assisted development to move from requirements to prototypes and customer pilots.'
 	},
 	{
 		title: 'UX Manager',
 		company: 'Adyen',
 		dates: 'Jan 2024 – May 2025',
 		description:
-			'Led a multidisciplinary team of designers, writers, and researchers on the merchant-facing core of the platform. Set the product narrative, protected focus, and kept the experience coherent across languages and markets.'
+			'Led a multidisciplinary team of 12 designers, writers and researchers on the merchant-facing core of the platform. Set a clear product narrative, protected focus and aligned teams across languages and markets.'
 	},
 	{
 		title: 'Product Design Manager',
 		company: 'Adyen',
 		dates: 'Sep 2022 – Jan 2024',
 		description:
-			'Built out the design team and led design on the merchant product. A lot of it was saying no so the experience stayed coherent while we shipped across markets.'
+			'Grew a small design group into a high-performing team. Hired and onboarded eight designers, tying their work to product strategy and customer outcomes, and defined roles and development paths across seniority.'
 	},
 	{
 		title: 'Engineering Team Lead',
 		company: 'Adyen',
 		dates: 'Jun 2021 – Sep 2022',
 		description:
-			'Led design, frontend, and backend on the Customer Area. We replaced search with something faster and more reliable for large merchants. I was the glue between product intent and what actually shipped.',
-		cards: 2
+			'Led a cross-functional team of 11 across design, frontend and backend for Adyen’s Customer Area. Delivered a new search engine that made the platform faster, more stable and easier to scale for large merchants.'
 	},
 	{
-		title: 'Principal Product Designer + Design System Lead',
+		title: 'Principal Product Designer',
+		company: 'Adyen',
+		dates: 'Jul 2019 – Jun 2021',
+		description:
+			'Worked on core foundations of Adyen’s platform, including navigation, account structures and multi-account flows. Much of the work was about making complex products easier to understand and operate at scale.'
+	},
+	{
+		title: 'Design System Lead',
 		company: 'Adyen',
 		dates: 'Jun 2018 – Jun 2021',
 		description:
-			'Started on payment methods and bulk settings. Then owned the first design system and a chunk of the platform: navigation, accounts, multi-account flows. A lot of that is still in the product.',
-		cards: 2
+			'Alongside the product design role, helped build and lead Adyen’s first design system. Worked with designers and engineers on shared components, patterns and principles, and set up a way for teams to contribute.'
 	},
 	{
-		title: 'Co-founder',
+		title: 'Product Designer',
+		company: 'Adyen',
+		dates: 'Jun 2018 – Jul 2019',
+		description:
+			'Designed core flows for payment methods and bulk settings — tools merchants rely on every day. Tightened complex edge cases and reduced friction in high-volume workflows.'
+	},
+	{
+		title: 'Co-founder & Product Designer',
 		company: 'Ristretto',
 		dates: 'Jul 2015 – Jan 2022',
 		description:
-			'Co-founded a product studio in Utrecht. Built with Randstad, Tempo-Team, museums, and startups. This ran in parallel with Adyen for a few years before I went full-time there.'
+			'Co-founded and ran a digital product studio alongside Adyen. Led product design, client communication and project direction for startups, cultural institutions and established organisations.'
+	}
+];
+
+/** Earlier roles shown more compactly on the resume. */
+export const additionalRoles = [
+	{
+		title: 'Product Designer (with INTK)',
+		company: 'Zeeuws Museum',
+		dates: 'Feb 2016 – Jul 2016',
+		description: 'Digital products for one of the Netherlands’ oldest regional museums.'
 	},
 	{
 		title: 'Visual Designer',
 		company: 'Yummygum',
 		dates: 'Mar 2015 – Jun 2015',
-		description:
-			'Digital product agency in Amsterdam. Short stretch designing product UI for tech scale-ups, right before starting Ristretto.'
+		description: 'Part-time visual design at a boutique agency in Amsterdam.'
+	},
+	{
+		title: 'Product Designer (with INTK)',
+		company: 'Teylers Museum',
+		dates: 'Oct 2014 – Jan 2015',
+		description: 'Digital product design for the oldest museum in the Netherlands.'
 	},
 	{
 		title: 'Product Designer',
 		company: 'INTK',
-		dates: 'Sep 2014 – Jan 2015',
-		description:
-			'Digital strategies for cultural organizations in Utrecht. Early product design work, including museum projects with Teylers.'
+		dates: 'Sep 2014 – Oct 2014',
+		description: 'Freelance product design for a digital studio in Utrecht.'
+	},
+	{
+		title: 'Product Designer',
+		company: 'Dunwello',
+		dates: 'May 2014 – Sep 2014',
+		description: 'Product design for an early-stage company.'
+	},
+	{
+		title: 'Product Designer',
+		company: 'IronVest',
+		dates: 'Sep 2013 – Feb 2014',
+		description: 'Product design for an early-stage company.'
 	}
 ];

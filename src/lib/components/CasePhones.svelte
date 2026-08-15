@@ -174,7 +174,7 @@
 		font-size: 0.8rem;
 		line-height: 1.4;
 		text-align: center;
-		color: var(--color-muted);
+		color: var(--color-body);
 	}
 
 	@media (max-width: 800px) {

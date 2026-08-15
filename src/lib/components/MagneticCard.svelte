@@ -10,8 +10,6 @@
 		size?: 'tall' | 'mid' | 'short' | 'wide';
 		lifted?: boolean;
 		video?: string;
-		/** Optional WebM source (preferred when supported). */
-		videoWebm?: string;
 		/** Still shown before the video is near the viewport / loaded. */
 		poster?: string;
 		title?: string;
@@ -22,7 +20,6 @@
 		size = 'mid',
 		lifted = false,
 		video,
-		videoWebm,
 		poster,
 		title,
 		description,
@@ -95,20 +92,14 @@
 		if (lifted || isBorrowed(videoEl)) return;
 
 		if (inView) {
-			const existing = videoEl.querySelector('source[type="video/mp4"]') as HTMLSourceElement | null;
+			const existing = videoEl.querySelector('source[type="video/webm"]') as HTMLSourceElement | null;
 			const needsLoad = !existing || existing.src !== new URL(video, location.href).href;
 			if (needsLoad) {
 				videoEl.replaceChildren();
-				if (videoWebm) {
-					const webm = document.createElement('source');
-					webm.src = videoWebm;
-					webm.type = 'video/webm';
-					videoEl.appendChild(webm);
-				}
-				const mp4 = document.createElement('source');
-				mp4.src = video;
-				mp4.type = 'video/mp4';
-				videoEl.appendChild(mp4);
+				const webm = document.createElement('source');
+				webm.src = video;
+				webm.type = 'video/webm';
+				videoEl.appendChild(webm);
 				videoEl.preload = 'auto';
 				mediaReady = false;
 				videoEl.load();

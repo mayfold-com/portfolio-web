@@ -2,6 +2,7 @@
 	import { browser } from '$app/environment';
 	import favicon from '$lib/assets/favicon.svg';
 	import GridToggle from '$lib/components/GridToggle.svelte';
+	import MobileNav from '$lib/components/MobileNav.svelte';
 	import Nav from '$lib/components/Nav.svelte';
 	import NoteSheet from '$lib/components/NoteSheet.svelte';
 	import ProjectSheet from '$lib/components/ProjectSheet.svelte';
@@ -19,6 +20,8 @@
 	import '$lib/local-fonts.css';
 
 	let { children } = $props();
+
+	const isDev = import.meta.env.DEV;
 
 	preparePageTransition();
 
@@ -54,10 +57,13 @@
 	</div>
 </div>
 
+<MobileNav />
 <ProjectSheet />
 <NoteSheet />
-<ThemePicker />
-<GridToggle />
+{#if isDev}
+	<ThemePicker />
+	<GridToggle />
+{/if}
 
 <style>
 	.shell {
@@ -93,20 +99,13 @@
 
 	@media (max-width: 800px) {
 		.sidebar {
-			position: sticky;
-			top: 0;
-			left: 0;
-			width: 100%;
-			height: auto;
-			/* Leave room for fixed theme + grid controls on the right. */
-			padding: 0.85rem calc(7.75rem + var(--page-pad)) 0.65rem var(--page-pad);
-			background: color-mix(in srgb, var(--color-bg) 92%, transparent);
-			backdrop-filter: blur(10px);
+			display: none;
 		}
 
 		.main {
 			margin-left: 0;
 			width: 100%;
+			padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
 		}
 
 		.content {

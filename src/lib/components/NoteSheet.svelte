@@ -126,6 +126,19 @@
 	}
 
 	function finalRect(): Rect {
+		if (window.innerWidth <= 800) {
+			const padTop = Math.round(
+				cssLength('calc(2.5rem + env(safe-area-inset-top, 0px))')
+			);
+			return withPxRadius({
+				top: padTop,
+				left: 0,
+				width: window.innerWidth,
+				height: window.innerHeight - padTop,
+				radius: '1.75rem'
+			});
+		}
+
 		const pagePad = cssLength('var(--page-pad)');
 		const padY = Math.round(Math.min(72, Math.max(44, pagePad * 1.05)));
 		const padX = Math.round(Math.min(56, Math.max(28, pagePad * 0.75)));
@@ -733,6 +746,16 @@
 		if (epoch !== closeEpoch) return;
 		cancelAnimationFrame(closeFrame);
 		lockPageScrollBriefly();
+
+		const shouldPop = pendingHistoryPop;
+		pendingHistoryPop = false;
+		const focusEl = restoreFocusEl;
+		restoreFocusEl = null;
+
+		// Clear the store before unmounting so a same-note click cannot see a
+		// stale `alreadyOpen` and skip remounting.
+		clearNote();
+
 		rendered = false;
 		expanded = false;
 		contentVisible = false;
@@ -753,11 +776,6 @@
 		origin = null;
 		closeRequested = false;
 		clearEscapeScroll();
-		const shouldPop = pendingHistoryPop;
-		pendingHistoryPop = false;
-		const focusEl = restoreFocusEl;
-		restoreFocusEl = null;
-		clearNote();
 		if (shouldPop) syncNoteUrlAfterClose();
 		queueMicrotask(() => focusEl?.focus({ preventScroll: true }));
 	}
@@ -899,8 +917,11 @@
 		untrack(() => {
 			const note = targetId ? getNote(targetId) : undefined;
 			if (note) {
-				if (note.slug !== id) {
-					openNote(note.slug, undefined, undefined, { syncUrl: false });
+				if (note.slug !== id || !rendered) {
+					openNote(note.slug, undefined, undefined, {
+						syncUrl: false,
+						force: !rendered && note.slug === id
+					});
 				}
 				return;
 			}
@@ -1133,7 +1154,8 @@
 				class:visible={hintVisible && contentVisible && canDismiss && !closeHot}
 				aria-hidden={!(hintVisible && contentVisible && canDismiss && !closeHot)}
 			>
-				Click, scroll up, or press <kbd>esc</kbd> to close
+				<span class="hint-desktop">Click, scroll up, or press <kbd>esc</kbd> to close</span>
+				<span class="hint-mobile">Scroll up or hit X to close</span>
 			</p>
 
 			<div bind:this={ringEl} class="dismiss-ring" aria-hidden="true">
@@ -1424,7 +1446,7 @@
 	.ph {
 		width: 100%;
 		border-radius: 0.75rem;
-		background: color-mix(in srgb, var(--color-text) 10%, var(--color-bg));
+		background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg));
 	}
 
 	.ratio-wide .ph {
@@ -1451,7 +1473,7 @@
 		margin: 0.55rem 0 0;
 		font-size: 0.85rem;
 		line-height: 1.4;
-		color: var(--color-muted);
+		color: var(--color-body);
 	}
 
 	.sheet-flow {
@@ -1486,6 +1508,10 @@
 	.close-hint.visible {
 		opacity: 1;
 		transform: translateY(-50%) translateX(0) scale(1);
+	}
+
+	.hint-mobile {
+		display: none;
 	}
 
 	.close-hint kbd {
@@ -1544,6 +1570,39 @@
 		.details-inner {
 			width: auto;
 			margin-inline: var(--page-pad);
+		}
+
+		.close-hint {
+			top: calc(2rem + 56px + 0.7rem);
+			left: 50%;
+			max-width: calc(100% - (2 * var(--page-pad)));
+			transform-origin: center top;
+			transform: translateX(-50%) translateY(6px) scale(0.64);
+			text-align: center;
+		}
+
+		.close-hint.visible {
+			transform: translateX(-50%) translateY(0) scale(1);
+		}
+
+		.hint-desktop {
+			display: none;
+		}
+
+		.hint-mobile {
+			display: inline;
+		}
+
+		.dismiss-ring {
+			top: calc(2rem + 10px);
+			left: 50%;
+			width: 36px;
+			height: 36px;
+			transform: translateX(-50%) scale(0.72);
+		}
+
+		.dismiss-ring.active {
+			transform: translateX(-50%) scale(1);
 		}
 	}
 </style>

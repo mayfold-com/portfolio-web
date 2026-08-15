@@ -3,7 +3,7 @@
 	--color-text: #EEE8DE;
 	--color-muted: #9c968c;
 	/* Body copy, matching the description text under the thumbnails. */
-	--color-body: color-mix(in srgb, var(--color-text) 45%, var(--color-bg));
+	--color-body: color-mix(in srgb, var(--color-text) 50%, var(--color-bg));
 	--color-accent: #EEE8DE;
 	--color-swatch: #141414;
 	--page-max: 72rem;

@@ -2,9 +2,12 @@
 	import type { CaseTimelineRole } from '$lib/data';
 
 	let {
-		roles
+		roles,
+		/** Snap bars to calendar years so short roles stay readable. */
+		byYear = false
 	}: {
 		roles: CaseTimelineRole[];
+		byYear?: boolean;
 	} = $props();
 
 	/** Start of a month as a decimal year. */
@@ -16,47 +19,62 @@
 	/** LinkedIn end months are inclusive; the bar should reach the start of the next month. */
 	function toExclusiveEnd(value: string) {
 		const [year, month = '1'] = value.split('-');
-		const next = Number(month) === 12 ? `${Number(year) + 1}-01` : `${year}-${String(Number(month) + 1).padStart(2, '0')}`;
+		const next =
+			Number(month) === 12
+				? `${Number(year) + 1}-01`
+				: `${year}-${String(Number(month) + 1).padStart(2, '0')}`;
 		return toDecimalYear(next);
 	}
 
+	/**
+	 * Sequential titles meet, they do not stack. The handoff month belongs
+	 * to the incoming role. Concurrent titles (Design System Lead) keep
+	 * their full LinkedIn span. With `byYear`, bars snap to calendar years
+	 * and the handoff year belongs to the incoming role.
+	 */
+	function barStart(role: CaseTimelineRole) {
+		const start = toDecimalYear(role.start);
+		return byYear ? Math.floor(start) : start;
+	}
+
+	function barEnd(role: CaseTimelineRole) {
+		let end = byYear
+			? Math.floor(toDecimalYear(role.end)) + 1
+			: toExclusiveEnd(role.end);
+		if (role.concurrent) return end;
+		const next = roles
+			.filter(
+				(other) => !other.concurrent && toDecimalYear(other.start) > toDecimalYear(role.start)
+			)
+			.sort((a, b) => toDecimalYear(a.start) - toDecimalYear(b.start))[0];
+		if (next) {
+			const cut = byYear ? Math.floor(toDecimalYear(next.start)) : toDecimalYear(next.start);
+			end = Math.min(end, cut);
+		}
+		return end;
+	}
+
 	const span = $derived.by(() => {
-		const starts = roles.map((role) => toDecimalYear(role.start));
-		const ends = roles.map((role) => toExclusiveEnd(role.end));
-		const from = Math.floor(Math.min(...starts));
+		const starts = roles.map((role) => barStart(role));
+		const ends = roles.map((role) => barEnd(role));
+		const from = Math.min(...starts);
 		const to = Math.max(...ends);
 		return { from, to };
 	});
 
 	const ticks = $derived(
-		Array.from({ length: Math.floor(span.to) - span.from + 1 }, (_, i) => span.from + i)
+		Array.from({ length: Math.floor(span.to) - Math.floor(span.from) + 1 }, (_, i) =>
+			Math.floor(span.from) + i
+		)
 	);
-
-	/**
-	 * Sequential titles meet, they do not stack. The handoff month belongs
-	 * to the incoming role. Concurrent titles (Design System Lead) keep
-	 * their full LinkedIn span.
-	 */
-	function barStart(role: CaseTimelineRole) {
-		return toDecimalYear(role.start);
-	}
-
-	function barEnd(role: CaseTimelineRole) {
-		let end = toExclusiveEnd(role.end);
-		if (role.concurrent) return end;
-		const next = roles
-			.filter((other) => !other.concurrent && toDecimalYear(other.start) > toDecimalYear(role.start))
-			.sort((a, b) => toDecimalYear(a.start) - toDecimalYear(b.start))[0];
-		if (next) end = Math.min(end, toDecimalYear(next.start));
-		return end;
-	}
 
 	function barOffset(role: CaseTimelineRole) {
 		return barStart(role) - span.from;
 	}
 
 	function barDuration(role: CaseTimelineRole) {
-		return Math.max(1 / 12, barEnd(role) - barStart(role));
+		const min = byYear ? 1 : 1 / 12;
+		return Math.max(min, barEnd(role) - barStart(role));
 	}
 
 	/** Sequential titles share a row. Concurrent titles sit on their own row underneath. */

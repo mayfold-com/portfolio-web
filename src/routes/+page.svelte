@@ -2,7 +2,7 @@
 	import MagneticCard from '$lib/components/MagneticCard.svelte';
 	import MagneticPill from '$lib/components/MagneticPill.svelte';
 	import NotesList from '$lib/components/NotesList.svelte';
-	import { elsewhere, profile, roles, testimonials, workProjects } from '$lib/data';
+	import { elsewhere, profile, roles, workProjects } from '$lib/data';
 	import { openProject, openProjectId } from '$lib/projectSheet';
 
 	const featured = workProjects;
@@ -25,8 +25,10 @@
 
 <main class="page">
 	<header class="intro">
-		<h1 class="title">{profile.title}</h1>
-		<p class="subline">{profile.subline}</p>
+		<h1 class="title">
+			<span class="title-desktop">{profile.title}</span>
+			<span class="title-mobile">{profile.titleMobile}</span>
+		</h1>
 
 		<div class="actions">
 			<MagneticPill variant="primary" href="/work">View work</MagneticPill>
@@ -94,24 +96,6 @@
 		</ul>
 	</section>
 
-	<section class="section testimonials" aria-labelledby="testimonials-title">
-		<h2 id="testimonials-title" class="section-title">Testimonials</h2>
-
-		<ul class="testimonial-list">
-			{#each testimonials as item (item.name)}
-				<li>
-					<blockquote>
-						<p>“{item.quote}”</p>
-						<footer>
-							<span class="testimonial-name">{item.name}</span>
-							<span class="testimonial-meta">{item.role} at {item.company}</span>
-						</footer>
-					</blockquote>
-				</li>
-			{/each}
-		</ul>
-	</section>
-
 	<section class="section notes" aria-labelledby="notes-title">
 		<div class="section-head">
 			<h2 id="notes-title" class="section-title">Notes</h2>
@@ -134,24 +118,6 @@
 				</li>
 			{/each}
 		</ul>
-	</section>
-
-	<section class="section contact" aria-labelledby="contact-title">
-		<h2 id="contact-title" class="section-title">Contact</h2>
-		<p class="contact-copy">
-			Based in {profile.location}. Open to thoughtful conversations about product, design systems,
-			and building with AI.
-		</p>
-		<div class="actions">
-			<MagneticPill
-				variant="primary"
-				href={profile.linkedin}
-				target="_blank"
-				rel="noopener noreferrer"
-			>
-				Say hi on LinkedIn
-			</MagneticPill>
-		</div>
 	</section>
 </main>
 
@@ -178,15 +144,8 @@
 		max-width: 18em;
 	}
 
-	.subline {
-		margin: 1.1rem 0 0;
-		font-size: 15px;
-		font-weight: var(--font-weight, 500);
-		line-height: 1.55;
-		color: var(--color-text);
-		opacity: 0.4;
-		/* ~3 lines at this size */
-		max-width: 32rem;
+	.title-mobile {
+		display: none;
 	}
 
 	.actions {
@@ -215,16 +174,18 @@
 
 	.section-title {
 		margin: 0;
-		font-size: 0.85rem;
+		font-size: clamp(1.15rem, 2vw, 1.35rem);
 		font-weight: var(--font-weight);
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		color: var(--color-muted);
+		line-height: 1.25;
+		letter-spacing: -0.02em;
+		color: var(--color-text);
 	}
 
 	.section-link {
-		font-size: 0.9rem;
-		color: var(--color-muted);
+		font-size: 15px;
+		font-weight: var(--font-weight, 500);
+		line-height: 1.35;
+		color: var(--color-body);
 		text-decoration: none;
 		text-underline-offset: 0.15em;
 	}
@@ -315,43 +276,6 @@
 		line-height: 1.35;
 	}
 
-	.testimonial-list {
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		display: grid;
-		gap: 2.5rem;
-		max-width: 40rem;
-	}
-
-	.testimonial-list blockquote {
-		margin: 0;
-	}
-
-	.testimonial-list p {
-		margin: 0 0 0.85rem;
-		font-size: 1.05rem;
-		line-height: 1.55;
-		color: var(--color-text);
-	}
-
-	.testimonial-list footer {
-		display: grid;
-		gap: 0.15rem;
-	}
-
-	.testimonial-name {
-		font-size: 0.95rem;
-		font-weight: var(--font-weight);
-		line-height: 1.35;
-	}
-
-	.testimonial-meta {
-		font-size: 0.9rem;
-		color: var(--color-muted);
-		line-height: 1.4;
-	}
-
 	.link-list a {
 		display: flex;
 		flex-wrap: wrap;
@@ -383,22 +307,18 @@
 		font-size: 0.85rem;
 	}
 
-	.contact-copy {
-		margin: 0;
-		max-width: 28rem;
-		font-size: 1.05rem;
-		line-height: 1.55;
-		color: var(--color-body);
-	}
-
-	.contact .actions {
-		margin-top: 0;
-	}
-
 	@media (max-width: 800px) {
 		.page {
 			width: 100%;
 			padding: 0 var(--page-pad) clamp(3rem, 12vw, 5rem);
+		}
+
+		.title-desktop {
+			display: none;
+		}
+
+		.title-mobile {
+			display: inline;
 		}
 
 		.intro {

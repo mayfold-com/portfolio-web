@@ -139,6 +139,16 @@
 		outline-offset: 2px;
 	}
 
+	@media (max-width: 800px) {
+		.sheet-close {
+			top: 2rem;
+			left: 50%;
+			width: 56px;
+			height: 56px;
+			transform: translateX(-50%);
+		}
+	}
+
 	@media (prefers-reduced-motion: reduce) {
 		.sheet-close {
 			transition: none;

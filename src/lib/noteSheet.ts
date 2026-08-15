@@ -153,7 +153,7 @@ export function openNote(
 	id: string,
 	source?: HTMLElement,
 	_pointer?: MouseEvent,
-	options?: { syncUrl?: boolean; direct?: boolean }
+	options?: { syncUrl?: boolean; direct?: boolean; force?: boolean }
 ) {
 	const alreadyOpen = get(openNoteId) === id;
 	noteOpensDirect = options?.direct === true;
@@ -186,7 +186,12 @@ export function openNote(
 		}
 	}
 
-	if (!alreadyOpen) {
+	// Writable.set is a no-op for the same value. After a close race the store can
+	// still hold this id while the sheet is unmounted — force a fresh open.
+	if (alreadyOpen && (source || options?.force)) {
+		openNoteId.set(null);
+	}
+	if (!alreadyOpen || source || options?.force) {
 		openNoteId.set(id);
 	}
 }

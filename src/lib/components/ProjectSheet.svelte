@@ -142,8 +142,6 @@
 	const FIGURE_ZOOM_MAX = 3;
 	const FIGURE_ZOOM_STEP = 0.25;
 	let figureZoom = $state(1);
-	const canFigureZoomOut = $derived(figureZoom > FIGURE_ZOOM_MIN + 0.001);
-	const canFigureZoomIn = $derived(figureZoom < FIGURE_ZOOM_MAX - 0.001);
 	let figurePinchDist = 0;
 	let figurePinchZoom0 = 1;
 	/**
@@ -221,6 +219,19 @@
 	}
 
 	function finalRect(): Rect {
+		if (window.innerWidth <= 800) {
+			const padTop = Math.round(
+				cssLength('calc(2.5rem + env(safe-area-inset-top, 0px))')
+			);
+			return withPxRadius({
+				top: padTop,
+				left: 0,
+				width: window.innerWidth,
+				height: window.innerHeight - padTop,
+				radius: '1.75rem'
+			});
+		}
+
 		// Sit a bit closer to page chrome than the old 40/20 inset — not full page-pad.
 		const pagePad = cssLength('var(--page-pad)');
 		const padY = Math.round(Math.min(48, Math.max(28, pagePad * 0.7)));
@@ -1176,8 +1187,14 @@
 		backdropEl?.style.setProperty('--ring-progress', String(ringProgress));
 		cardEl?.style.setProperty('--ring-progress', String(ringProgress));
 
-		const sheetActive = ringProgress > 0.001 && canDismiss;
-		ringEl?.classList.toggle('active', sheetActive);
+		const ringActive =
+			ringProgress > 0.001 &&
+			(canDismiss || (figureFilled && !figureFillMorphing));
+		ringEl?.classList.toggle('active', ringActive);
+	}
+
+	function atFigureScrollTop() {
+		return !figureScrollerEl || figureScrollerEl.scrollTop <= 0.5;
 	}
 
 	function atScrollTop() {
@@ -1276,8 +1293,8 @@
 		paintRing(0);
 		if (phase === 'dismissing') phase = 'open';
 		// Bring the close hint back when pull-to-dismiss is cancelled.
-		scheduleCloseHint();
-		if (cardEl && expanded) {
+		if (!figureFilled) scheduleCloseHint();
+		if (!figureFilled && cardEl && expanded) {
 			const open = openRect ?? finalRect();
 			applyChrome(cardEl, open, !reduceMotion, {
 				duration: Math.min(220, motion.closeDuration),
@@ -1289,7 +1306,18 @@
 	}
 
 	function paintDismiss(nextRaw: number) {
-		if (!canDismiss || reduceMotion || closeRequested || phase === 'closing') return;
+		if (reduceMotion || closeRequested || phase === 'closing') return;
+
+		// Pull-to-close the image viewer with the same ring + rubber as the sheet.
+		if (figureFill && !figureFillMorphing) {
+			rawPull = Math.min(PULL_RANGE, Math.max(0, nextRaw));
+			notePullSample(rawPull);
+			paintRing(clamp01(rawPull / PULL_RANGE));
+			if (rawPull >= PULL_RANGE) closeFigureFill();
+			return;
+		}
+
+		if (!canDismiss) return;
 		// Cap at 100% — extra overscroll must not keep accumulating past full.
 		rawPull = Math.min(PULL_RANGE, Math.max(0, nextRaw));
 		notePullSample(rawPull);
@@ -1306,7 +1334,21 @@
 	}
 
 	function settleDismiss(velocity = gestureVelocity) {
-		if (!canDismiss || closeRequested || phase === 'closing') return;
+		if (closeRequested || phase === 'closing') return;
+
+		if (figureFill && !figureFillMorphing) {
+			const projected = ringProgress + (velocity * COAST_MS) / PULL_RANGE;
+			const shouldSnap =
+				ringProgress >= 1 ||
+				projected >= 1 ||
+				(ringProgress > 0.35 && velocity >= FLICK_VELOCITY);
+			clearPullSamples();
+			if (shouldSnap) closeFigureFill();
+			else clearDismiss();
+			return;
+		}
+
+		if (!canDismiss) return;
 		const projected = ringProgress + (velocity * COAST_MS) / PULL_RANGE;
 		const shouldSnap =
 			ringProgress >= 1 || projected >= 1 || (ringProgress > 0.35 && velocity >= FLICK_VELOCITY);
@@ -1364,8 +1406,8 @@
 	/** Clear close / zoom chrome on the vertical rail; horizontal sits on the bottom edge. */
 	const FIGURE_SCROLL_TRACK_PAD_Y = 52;
 	/** Fallback when the X rail isn't measured yet (matches CSS chrome clearances). */
-	const FIGURE_SCROLL_RAIL_X_LEFT = 112;
-	const FIGURE_SCROLL_RAIL_X_RIGHT = 112;
+	const FIGURE_SCROLL_RAIL_X_LEFT = 120;
+	const FIGURE_SCROLL_RAIL_X_RIGHT = 40;
 
 	function figureScrollTrackWidth() {
 		const measured = figureScrollRailXEl?.clientWidth ?? 0;
@@ -1566,7 +1608,7 @@
 			return;
 		}
 
-		// Image viewer — scroll the figure; ctrl/meta+wheel zooms.
+		// Image viewer — scroll the figure; ctrl/meta+wheel zooms; pull-up closes.
 		if (figureFill) {
 			if (figureFillMorphing) {
 				event.preventDefault();
@@ -1583,6 +1625,30 @@
 			}
 			const deltaY = wheelDeltaY(event);
 			if (deltaY === 0) return;
+
+			if (deltaY < 0 && atFigureScrollTop()) {
+				event.preventDefault();
+				if (reduceMotion) return;
+				const pullDelta =
+					!figureScrollerEl || figureScrollerEl.scrollTop <= 0.5
+						? -deltaY
+						: Math.max(0, -(figureScrollerEl.scrollTop + deltaY));
+				if (pullDelta > 0) {
+					paintDismiss(rawPull + pullDelta);
+					scheduleSettle();
+				}
+				return;
+			}
+
+			if (!reduceMotion && rawPull > 0 && deltaY > 0) {
+				event.preventDefault();
+				const next = rawPull - deltaY;
+				if (next <= DEAD_ZONE) clearDismiss();
+				else paintDismiss(next);
+				scheduleSettle();
+				return;
+			}
+
 			if (figureScrollerEl && !figureScrollerEl.contains(event.target as Node)) {
 				event.preventDefault();
 				figureScrollBy(deltaY);
@@ -1674,7 +1740,7 @@
 			return;
 		}
 
-		// Image viewer — pinch zooms toward the midpoint; one finger scrolls natively.
+		// Image viewer — pinch zooms toward the midpoint; pull-down at top closes.
 		if (figureFill) {
 			if (figureFillMorphing) {
 				if (event.cancelable) event.preventDefault();
@@ -1695,7 +1761,33 @@
 						(a.clientY + b.clientY) / 2
 					);
 				}
+				return;
 			}
+
+			const y = event.touches[0]?.clientY ?? touchLastY;
+			const dy = y - touchLastY; // >0 finger down → pull to dismiss at top
+			touchLastY = y;
+
+			if (atFigureScrollTop() && dy > 0) {
+				if (event.cancelable) event.preventDefault();
+				if (rawPull >= PULL_RANGE) {
+					closeFigureFill();
+					return;
+				}
+				paintDismiss(rawPull + dy);
+				return;
+			}
+
+			if (rawPull > 0) {
+				if (event.cancelable) event.preventDefault();
+				if (dy < 0) {
+					const next = rawPull + dy;
+					if (next <= DEAD_ZONE) clearDismiss();
+					else paintDismiss(next);
+				}
+				return;
+			}
+
 			return;
 		}
 
@@ -1765,7 +1857,12 @@
 		if (!touchActive) return;
 		touchActive = false;
 		figurePinchDist = 0;
-		if (reduceMotion || closeRequested || figureFill) return;
+		if (reduceMotion || closeRequested) return;
+		if (figureFill) {
+			if (rawPull > DEAD_ZONE) settleDismiss();
+			else if (rawPull > 0) clearDismiss();
+			return;
+		}
 		if (!canDismiss) return;
 		if (rawPull > DEAD_ZONE) settleDismiss();
 		else if (rawPull > 0) clearDismiss();
@@ -2527,10 +2624,14 @@
 			style:--sheet-h="{sheetH}px"
 		>
 			<SheetClose
-				visible={contentVisible && canDismiss && !figureFilled && !morphing && !isClosing}
+				visible={contentVisible &&
+					!morphing &&
+					!isClosing &&
+					!figureFillMorphing &&
+					(canDismiss || figureFilled)}
 				tone="media"
 				bind:hot={closeHot}
-				onclick={() => dismissWithScrollFirst()}
+				onclick={() => (figureFill ? closeFigureFill() : dismissWithScrollFirst())}
 			/>
 
 			<p
@@ -2538,7 +2639,8 @@
 				class:visible={hintVisible && contentVisible && canDismiss && !closeHot}
 				aria-hidden={!(hintVisible && contentVisible && canDismiss && !closeHot)}
 			>
-				Click, scroll up, or press <kbd>esc</kbd> to close
+				<span class="hint-desktop">Click, scroll up, or press <kbd>esc</kbd> to close</span>
+				<span class="hint-mobile">Scroll up or hit X to close</span>
 			</p>
 
 			<div bind:this={ringEl} class="dismiss-ring" aria-hidden="true">
@@ -2644,10 +2746,9 @@
 
 						{#if project.comingSoon}
 							<div class="coming-soon-panel">
-								<h3 class="coming-soon-title">Coming soon</h3>
+								<h3 class="coming-soon-title">Work in progress</h3>
 								<p class="coming-soon-copy">
-									A fuller write-up of this project is on the way. The overview above covers
-									the gist for now.
+									A fuller write-up of this project is on the way.
 								</p>
 							</div>
 						{:else if project.caseStudy?.length}
@@ -2902,22 +3003,6 @@
 						</div>
 					{/if}
 					<div class="figure-chrome" class:dimmed={figureFillMorphing}>
-						<button
-							type="button"
-							class="figure-btn figure-close"
-							aria-label="Close image"
-							onclick={() => closeFigureFill()}
-						>
-							<svg viewBox="0 0 24 24" aria-hidden="true">
-								<path
-									d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.75"
-									stroke-linecap="round"
-								/>
-							</svg>
-						</button>
 						{#if figureMinimap.visible}
 							<button
 								type="button"
@@ -2950,42 +3035,6 @@
 								</span>
 							</button>
 						{/if}
-						<div class="figure-zoom" role="group" aria-label="Zoom">
-							<button
-								type="button"
-								class="figure-btn"
-								aria-label="Zoom out"
-								disabled={!canFigureZoomOut}
-								onclick={() => bumpFigureZoom(-1)}
-							>
-								<svg viewBox="0 0 24 24" aria-hidden="true">
-									<path
-										d="M6 12h12"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.75"
-										stroke-linecap="round"
-									/>
-								</svg>
-							</button>
-							<button
-								type="button"
-								class="figure-btn"
-								aria-label="Zoom in"
-								disabled={!canFigureZoomIn}
-								onclick={() => bumpFigureZoom(1)}
-							>
-								<svg viewBox="0 0 24 24" aria-hidden="true">
-									<path
-										d="M12 6v12M6 12h12"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.75"
-										stroke-linecap="round"
-									/>
-								</svg>
-							</button>
-						</div>
 						<div
 							class="scroll-rail figure-scroll-rail-y"
 							class:visible={figureScrollThumbY.visible && !figureFillMorphing}
@@ -3084,8 +3133,9 @@
 
 	/* Full-window image viewer. */
 	.figure-fill {
-		/* Tuck chrome into the rounded corners (matches ~1.75rem sheet radius). */
-		--figure-chrome-inset: 0.4rem;
+		/* Match SheetClose face inset (center at 1.75rem, 24px control). */
+		--figure-chrome-inset: calc(1.75rem - 12px);
+		--figure-corner: 1.75rem;
 		position: absolute;
 		z-index: 12;
 		overflow: hidden;
@@ -3096,7 +3146,7 @@
 	}
 
 	.figure-fill.framed {
-		background: color-mix(in srgb, var(--color-text) 10%, var(--color-bg));
+		background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg));
 	}
 
 	.figure-stage {
@@ -3139,59 +3189,6 @@
 		opacity: 0;
 	}
 
-	.figure-btn {
-		appearance: none;
-		pointer-events: auto;
-		display: grid;
-		place-items: center;
-		width: 2.5rem;
-		height: 2.5rem;
-		margin: 0;
-		padding: 0;
-		border: 0;
-		border-radius: 999px;
-		/* Same fill as the figure minimap canvas. */
-		background: color-mix(in srgb, var(--color-text) 28%, var(--color-bg));
-		color: #fff;
-		cursor: pointer;
-		box-shadow: none;
-		transition:
-			background-color 140ms ease,
-			opacity 140ms ease,
-			transform 140ms ease;
-	}
-
-	.figure-btn svg {
-		display: block;
-		width: 1.15rem;
-		height: 1.15rem;
-	}
-
-	.figure-btn:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--color-text) 40%, var(--color-bg));
-	}
-
-	.figure-btn:active:not(:disabled) {
-		transform: scale(0.96);
-	}
-
-	.figure-btn:disabled {
-		opacity: 0.35;
-		cursor: default;
-	}
-
-	.figure-btn:focus-visible {
-		outline: 2px solid #fff;
-		outline-offset: 2px;
-	}
-
-	.figure-close {
-		position: absolute;
-		z-index: 5;
-		top: var(--figure-chrome-inset);
-		right: var(--figure-chrome-inset);
-	}
-
 	.figure-minimap {
 		appearance: none;
 		pointer-events: auto;
@@ -3218,9 +3215,9 @@
 		width: 5.5rem;
 		aspect-ratio: 16 / 10;
 		overflow: hidden;
-		/* Follow the sheet corner on the bottom-left; keep other corners tight. */
+		/* Concentric with the sheet’s bottom-left corner; other corners stay tight. */
 		border-radius: 0.45rem;
-		border-bottom-left-radius: calc(1.75rem - var(--figure-chrome-inset));
+		border-bottom-left-radius: max(0px, calc(var(--figure-corner) - var(--figure-chrome-inset)));
 		background: color-mix(in srgb, var(--color-text) 28%, var(--color-bg));
 	}
 
@@ -3239,16 +3236,6 @@
 		border-radius: 0.15rem;
 		background: rgb(255 255 255 / 0.12);
 		box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
-		pointer-events: none;
-	}
-
-	.figure-zoom {
-		position: absolute;
-		z-index: 5;
-		right: var(--figure-chrome-inset);
-		bottom: var(--figure-chrome-inset);
-		display: flex;
-		gap: 0.45rem;
 		pointer-events: none;
 	}
 
@@ -3300,11 +3287,10 @@
 	}
 
 	.figure-fill .figure-scroll-rail-x {
-		/* Clear zoom (+/−) on the right; widen left clearance when minimap is present. */
+		/* Widen left clearance when minimap is present. */
 		--figure-scroll-x-gap: 0.75rem;
-		--figure-scroll-x-zoom: calc(2.5rem + 0.45rem + 2.5rem);
 		top: auto;
-		right: calc(var(--figure-chrome-inset) + var(--figure-scroll-x-zoom) + var(--figure-scroll-x-gap));
+		right: calc(var(--figure-chrome-inset) + var(--figure-scroll-x-gap));
 		bottom: 12px;
 		left: calc(var(--figure-chrome-inset) + var(--figure-scroll-x-gap));
 		width: auto;
@@ -3361,6 +3347,16 @@
 		background: transparent;
 		pointer-events: none;
 		user-select: none;
+	}
+
+	/*
+	 * Framed figures (device mockups, etc.) open contained — not edge-to-edge —
+	 * so the grey stage stays visible around the image.
+	 */
+	.figure-fill.framed .figure-image {
+		width: auto;
+		max-width: calc(70cqw * var(--figure-zoom, 1));
+		max-height: calc(82cqh * var(--figure-zoom, 1));
 	}
 
 	.card.figure-filled .scroller {
@@ -3503,6 +3499,10 @@
 		-webkit-background-clip: text;
 		-webkit-text-fill-color: transparent;
 		animation: close-hint-shimmer 3s ease-in-out infinite;
+	}
+
+	.hint-mobile {
+		display: none;
 	}
 
 	.close-hint kbd {
@@ -3795,12 +3795,12 @@
 		width: 100%;
 		max-width: var(--span-4);
 		border-radius: 0.75rem;
-		background: color-mix(in srgb, var(--color-text) 10%, var(--color-bg));
+		background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg));
 		overflow: hidden;
 	}
 
 	.case-ph.has-image {
-		background: color-mix(in srgb, var(--color-text) 6%, var(--color-bg));
+		background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg));
 	}
 
 	.case-ph img {
@@ -3812,7 +3812,7 @@
 	}
 
 	.case-ph.framed {
-		background: color-mix(in srgb, var(--color-text) 10%, var(--color-bg));
+		background: color-mix(in srgb, var(--color-text) 5%, var(--color-bg));
 	}
 
 	.case-ph.framed:not(.peek),
@@ -3997,7 +3997,7 @@
 		margin: 0.55rem 0 0;
 		font-size: 0.85rem;
 		line-height: 1.4;
-		color: var(--color-muted);
+		color: var(--color-body);
 	}
 
 	.case-figures {
@@ -4088,7 +4088,7 @@
 	dd {
 		margin: 0;
 		font-size: 0.95rem;
-		color: var(--color-muted);
+		color: var(--color-body);
 	}
 
 	dd a {
@@ -4114,9 +4114,14 @@
 			transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
-	.card.figure-filled > .dismiss-ring,
 	.card.figure-filled > .close-hint {
 		visibility: hidden;
+	}
+
+	/* Keep the shared close chrome above the image viewer. */
+	.card.figure-filled > :global(.sheet-close),
+	.card.figure-filled > .dismiss-ring {
+		z-index: 20;
 	}
 
 	.dismiss-ring.active {
@@ -4146,6 +4151,41 @@
 		stroke-linecap: round;
 		stroke-dasharray: var(--ring-len);
 		stroke-dashoffset: calc(var(--ring-len) * (1 - var(--ring-progress, 0)));
+	}
+
+	@media (max-width: 800px) {
+		.close-hint {
+			top: calc(2rem + 56px + 0.7rem);
+			left: 50%;
+			max-width: calc(100% - (2 * var(--page-pad)));
+			transform-origin: center top;
+			transform: translateX(-50%) translateY(6px) scale(0.64);
+			text-align: center;
+		}
+
+		.close-hint.visible {
+			transform: translateX(-50%) translateY(0) scale(1);
+		}
+
+		.hint-desktop {
+			display: none;
+		}
+
+		.hint-mobile {
+			display: inline;
+		}
+
+		.dismiss-ring {
+			top: calc(2rem + 10px);
+			left: 50%;
+			width: 36px;
+			height: 36px;
+			transform: translateX(-50%) scale(0.72);
+		}
+
+		.dismiss-ring.active {
+			transform: translateX(-50%) scale(1);
+		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {

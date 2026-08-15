@@ -10,5 +10,10 @@
 	},
 	"observability": {
 		"enabled": true
-	}
+	},
+	"workers_dev": true,
+	"routes": [
+		{ "pattern": "naimchayata.com/*", "zone_name": "naimchayata.com" },
+		{ "pattern": "www.naimchayata.com/*", "zone_name": "naimchayata.com" }
+	]
 }

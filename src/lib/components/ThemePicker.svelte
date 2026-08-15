@@ -61,7 +61,7 @@
 		font-size: 0.75rem;
 		font-weight: var(--font-weight);
 		color: var(--color-text);
-		opacity: 0.45;
+		opacity: 0.5;
 	}
 
 	.control {

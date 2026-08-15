@@ -93,7 +93,7 @@
 		font-weight: var(--font-weight, 500);
 		line-height: 1.35;
 		color: var(--color-text);
-		opacity: 0.45;
+		opacity: 0.5;
 		transition: opacity 220ms ease;
 	}
 

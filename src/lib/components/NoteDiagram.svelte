@@ -2,7 +2,7 @@
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
 
-	export type NoteDiagramKind = 'gaps' | 'deadline' | 'benchmark' | 'tasks';
+	export type NoteDiagramKind = 'gaps' | 'benchmark' | 'tasks';
 
 	let { kind }: { kind: NoteDiagramKind } = $props();
 
@@ -167,27 +167,6 @@
 					{/each}
 				</ul>
 				<span class="screen"></span>
-			</div>
-		</div>
-	</figure>
-{:else if kind === 'deadline'}
-	<figure class="note-diagram">
-		<div class="frame">
-			<div class="chart">
-				<div class="overlay" aria-hidden="true">
-					<div class="marker" style:--at="62"></div>
-				</div>
-
-				<ol class="rows">
-					<li class="row">
-						<span class="bar" style:--at="0" style:--dur="118">Wait for us</span>
-					</li>
-					<li class="row">
-						<span class="bar" style:--at="0" style:--dur="46">Make their own</span>
-					</li>
-				</ol>
-
-				<span class="foot" style:--at="62">The next deadline</span>
 			</div>
 		</div>
 	</figure>
@@ -393,11 +372,6 @@
 		white-space: nowrap;
 	}
 
-	/* Room for the label that hangs under the chart. */
-	.chart:not(.labelled) {
-		padding-bottom: 1.85rem;
-	}
-
 	.rows {
 		display: grid;
 		gap: 0.55rem;
@@ -446,34 +420,6 @@
 	}
 
 	.lane {
-		font-size: 0.85rem;
-		color: var(--color-muted);
-		white-space: nowrap;
-	}
-
-	/* Overlay spans the track area only, so percentages line up with the bars. */
-	.overlay {
-		position: absolute;
-		top: 0;
-		bottom: 1.85rem;
-		left: var(--label-w);
-		right: 0;
-		pointer-events: none;
-	}
-
-	.marker {
-		position: absolute;
-		inset-block: -0.35rem;
-		left: calc(var(--at) * 1%);
-		width: 1px;
-		background: color-mix(in srgb, var(--color-text) 32%, transparent);
-	}
-
-	.foot {
-		position: absolute;
-		bottom: 0;
-		left: calc(var(--label-w) + var(--at) * 1%);
-		transform: translateX(-50%);
 		font-size: 0.85rem;
 		color: var(--color-muted);
 		white-space: nowrap;
