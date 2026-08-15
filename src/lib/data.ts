@@ -345,12 +345,25 @@ export const workProjects: WorkProject[] = [
 		title: 'Mayfold',
 		meta: 'Founder — 2025–Present',
 		description:
-			'Building Mayfold, an AI photography tool for fashion brands. Most of the work is on control: same product, same pose, different outfits, without the usual AI tells.',
+			'AI photography with the control of an art-directed shoot. Same product, same person, different outfits — convincing down to fabric and light.',
 		body: [
 			'Mayfold is my personal product lab for AI-enabled products. The main thread is fashion photography that holds up next to real shoots — consistency, fabric, light — not one-off demos.',
 			'I use it to stay hands-on across product, design, and implementation, and to test ideas without waiting on a brief.'
 		],
-		comingSoon: true,
+		caseStudy: productStory({
+			idea: [
+				'Mayfold is my personal product lab for AI-enabled products. The main thread is fashion photography that holds up next to real shoots — consistency, fabric, light — not one-off demos.',
+				'I use it to stay hands-on across product, design, and implementation, and to test ideas without waiting on a brief.'
+			],
+			overview: {
+				type: 'figure',
+				ratio: 'wide',
+				src: '/media/mayfold-models.jpg',
+				caption: 'Browsing models in Mayfold',
+				framed: true
+			},
+			beats: []
+		}),
 		services: 'Product, Design, Engineering',
 		year: '2025 – Present',
 		role: 'Founder',
@@ -579,110 +592,151 @@ export const notes: Note[] = [
 		slug: 'how-to-stay-sane-while-building-with-ai',
 		title: 'How to stay sane while building with AI',
 		date: '2026-08-14',
-		description: 'Keeping a clear picture of the work while models run in parallel.',
+		description: 'One product, one thread.',
 		body: [
 			{
 				type: 'paragraph',
-				text: 'AI coding tools gave me a new bad habit: starting work while I wait for other work.'
+				text: 'I had five agents open, and every tab showed progress.'
 			},
 			{
 				type: 'paragraph',
-				text: 'I send a task to a model. The response takes a while, so I open another terminal and start something else. That task pauses too. Soon I have three agents changing three parts of the same product.'
+				text: 'One was changing the data model. Another was building against the old model. A third was polishing a page I had already decided to remove. The other two needed answers before they could continue.'
 			},
 			{
 				type: 'paragraph',
-				text: 'For a few minutes, this feels very productive.'
+				text: 'Each agent had done more or less what I asked. Together, they had made a mess.'
 			},
 			{
 				type: 'paragraph',
-				text: 'Then one agent changes the data model. Another still assumes the old model exists. A third has redesigned the page that the first one just removed.'
+				text: 'It had started with one large task. I gave it to Claude Opus 5 or GPT 5.6 Sol, then waited. When the answer did not arrive, I opened another agent and found something useful for it to do. Soon, several parts of the product were moving at once.'
 			},
 			{
 				type: 'paragraph',
-				text: 'I spend the next hour finding out what happened.'
-			},
-			{
-				type: 'diagram',
-				kind: 'collision'
+				text: 'It looked efficient. In practice, the agents produced work faster than I could keep their assumptions aligned.'
 			},
 			{
 				type: 'heading',
-				text: 'Speed changes how I work'
+				text: 'The wait changed how I worked'
 			},
 			{
 				type: 'paragraph',
-				text: 'I assumed that the strongest model would always save the most time. In practice, response time changes my behaviour.'
+				text: 'Long-running models can do excellent work. I still use them when I can define the outcome, leave them alone and inspect the result later.'
 			},
 			{
 				type: 'paragraph',
-				text: 'A quick response keeps the problem in my head. I can try something, see the result, and correct it while I still remember why I made the previous choice.'
+				text: 'The trouble starts when I am still making product decisions. A few empty minutes give me time to open another task, but not enough time to understand a new problem. I leave the first task half-finished and return with less context than before.[^1]'
 			},
 			{
 				type: 'paragraph',
-				text: 'A slow response creates an empty space. I tend to fill that space with another task.'
+				text: 'Every new agent also gives me more to remember: the prompt, the files it touched, the decisions it made and the decisions it needs from me. If two agents work on the same part of the product, I must reconcile their versions.'
 			},
 			{
 				type: 'paragraph',
-				text: 'At the moment, I often enjoy building with Grok for this reason. It responds fast enough to feel like a continuous exchange. I stay with one problem for longer.'
-			},
-			{
-				type: 'paragraph',
-				text: 'A deeper GPT run may produce a stronger answer on a difficult task. Yet the value drops when waiting causes me to split my attention across several branches.'
-			},
-			{
-				type: 'paragraph',
-				text: 'The expensive part is no longer writing the code. It is keeping a clear picture of what all the code is doing.'
-			},
-			{
-				type: 'diagram',
-				kind: 'wait'
+				text: 'I had become the manager of five fast colleagues who did not speak to each other.'
 			},
 			{
 				type: 'heading',
-				text: 'Match the model to the loop'
+				text: 'Smaller steps keep the product moving'
 			},
 			{
 				type: 'paragraph',
-				text: 'I now choose a model based on the kind of attention the work needs.'
+				text: 'I now stay with one task and make smaller cuts.'
 			},
 			{
 				type: 'paragraph',
-				text: 'I use a fast model when I am exploring a flow, fixing a small bug, changing copy, or working through an interface one decision at a time. The short feedback loop matters more than a perfect first answer.'
-			},
-			{
-				type: 'paragraph',
-				text: 'I use a slower model for work that can stand on its own. This can be an architecture review, a migration plan, a difficult investigation, or a final critique. I give it clear boundaries and a result I can check.'
-			},
-			{
-				type: 'paragraph',
-				text: 'I also try to keep one active branch. Parallel work is useful when the tasks are truly separate. Most of my tasks are less separate than they first appear.'
-			},
-			{
-				type: 'paragraph',
-				text: 'When I catch myself opening a third agent, I stop and ask a plain question: what am I waiting for?'
-			},
-			{
-				type: 'paragraph',
-				text: 'Often I can make the current task smaller. Sometimes I need to let the slow model finish. Starting more work rarely makes it finish sooner.'
+				text: 'I ask for one meaningful change, run the product, inspect the result and choose the next step. When an assumption is wrong, I catch it before much has been built on top of it. When the change works, the product itself tells me what to do next.'
 			},
 			{
 				type: 'diagram',
-				kind: 'match'
+				kind: 'tasks'
 			},
 			{
 				type: 'paragraph',
-				text: 'The best model on a benchmark may not be the best model for my state of mind.'
+				text: 'This matters because I rarely know the full answer at the start. I might know what a feature should achieve, but its shape becomes clear while I use it. A button feels unnecessary. A state is missing. A flow that made sense in text feels slow on screen.'
 			},
 			{
 				type: 'paragraph',
-				text: 'The best one helps me finish the thing in front of me.'
+				text: 'A long prompt cannot reveal those things. A working product can.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Several agents may finish more instructions, but a short loop gives me something more useful: a better next decision.'
+			},
+			{
+				type: 'heading',
+				text: 'Choose a rhythm that fits the work'
+			},
+			{
+				type: 'paragraph',
+				text: 'I use a long-running model for work with a clear boundary. It can investigate an isolated problem, map an unfamiliar part of the codebase or complete a change that I can review as one result.'
+			},
+			{
+				type: 'paragraph',
+				text: 'When I am shaping a feature, I prefer a quicker exchange. I want the answer to arrive while the problem is still fresh. The work then feels like building with the model instead of handing work over to it.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A fast model that creates extra repair work is still slow. A powerful model can also be wasteful when the task only needs a small, careful change. I care about the whole loop: asking, waiting, checking and correcting.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Part of that wait is the model checking itself. Some reach for tools constantly. They will spin up a browser and look at the page to confirm that a visual change actually landed. Others write a long account of everything they did to get there.'
+			},
+			{
+				type: 'paragraph',
+				text: 'Both habits can be worth the time, and I think the preference is personal. Mine is a speedy delivery. I keep a localhost open next to the editor, so I would rather look at the change myself than read a report about it.'
+			},
+			{
+				type: 'paragraph',
+				text: 'On a real task, that wait is not the same for every model, or even for every setting of the same model. They also write different amounts. Claude Sonnet 5 at max used 300 million output tokens to run the same index. GPT 5.6 Sol at medium used 12 million.[^2]'
+			},
+			{
+				type: 'diagram',
+				kind: 'benchmark'
+			},
+			{
+				type: 'paragraph',
+				text: 'Right now I mostly use Grok 4.5. It sits in a useful middle: fast enough that I can stay with one task, lean enough that it does not bury me in tokens, and capable enough that I do not need five agents to finish the work. That balance of speed, verbosity and cost is what lets me work sequentially. It is also what keeps me sane.'
+			},
+			{
+				type: 'paragraph',
+				text: 'I also try to stay with one model for long enough to learn its habits. I learn when it needs a narrow instruction, when it tends to overbuild and where I need to check its work. That familiarity saves more time than switching models for every small advantage.'
+			},
+			{
+				type: 'heading',
+				text: 'One product, one thread'
+			},
+			{
+				type: 'paragraph',
+				text: 'I now keep one objective in the foreground. While the model works, I inspect the diff, test the product or prepare the next request. I do not start a separate feature because a spinner gave me thirty empty seconds.'
+			},
+			{
+				type: 'paragraph',
+				text: 'There are still good reasons to let an agent work on its own. Most of my product work is too fluid for that. Each result changes what I think the next step should be.'
+			},
+			{
+				type: 'paragraph',
+				text: 'I leave a good session with a clearer product and enough context to continue. That matters more to me than a screen full of busy agents.'
+			},
+			{
+				type: 'footnotes',
+				items: [
+					{
+						id: '1',
+						text: 'Research into [task interruption in software development](https://doi.org/10.1145/3210459.3210471) found that self-initiated task switches can be more disruptive than external interruptions.'
+					},
+					{
+						id: '2',
+						text: 'Data from [Artificial Analysis](https://artificialanalysis.ai/leaderboards/models), 15 August 2026. Time is end-to-end response time for a 500-token reply, including thinking. Tokens are output tokens used to run the full Intelligence Index. Intelligence is the Artificial Analysis Intelligence Index score.'
+					}
+				]
 			}
 		]
 	},
 	{
 		slug: 'build-the-rough-version-first',
 		title: 'Build the rough version first',
-		date: '2026-05-21',
+		date: '2026-08-15',
 		description: 'A working version argues back. A static screen does not.',
 		body: [
 			{
@@ -700,10 +754,6 @@ export const notes: Note[] = [
 			{
 				type: 'paragraph',
 				text: 'A static screen lets me imagine that a flow works. A working version argues back.'
-			},
-			{
-				type: 'diagram',
-				kind: 'argue'
 			},
 			{
 				type: 'heading',
@@ -726,12 +776,12 @@ export const notes: Note[] = [
 				text: 'What happens while the page loads? Can I go back without losing my choices? What does an empty account look like? What if the API fails after the user has paid? Is this second step doing any useful work?'
 			},
 			{
-				type: 'paragraph',
-				text: 'These questions are easy to miss when every screen is a tidy frame. They become hard to ignore when I must click through the product myself.'
-			},
-			{
 				type: 'diagram',
 				kind: 'gaps'
+			},
+			{
+				type: 'paragraph',
+				text: 'These questions are easy to miss when every screen is a tidy frame. They become hard to ignore when I must click through the product myself.'
 			},
 			{
 				type: 'paragraph',
@@ -768,10 +818,6 @@ export const notes: Note[] = [
 				]
 			},
 			{
-				type: 'diagram',
-				kind: 'survive'
-			},
-			{
 				type: 'paragraph',
 				text: 'The sequence is not strict. I still sketch and explore. I still move between code and Figma. The important part is that polish comes after contact with the product.'
 			},
@@ -786,101 +832,121 @@ export const notes: Note[] = [
 		]
 	},
 	{
-		slug: 'change-has-a-budget',
-		title: 'Change has a budget',
-		date: '2026-02-04',
-		description: 'The team and the user experience change at different speeds.',
+		slug: 'when-a-familiar-product-changes-overnight',
+		title: 'What happens when a familiar product changes overnight',
+		date: '2025-02-04',
+		description: 'The product may change overnight. The organisation cannot.',
 		body: [
 			{
 				type: 'paragraph',
-				text: 'I started thinking about change as a budget at Adyen.'
+				text: 'When we launched a new navigation for Adyen’s merchant platform, Support told us something I had not considered: some merchants had turned the old interface into printed manuals for their employees.'
 			},
 			{
 				type: 'paragraph',
-				text: 'There were periods when we changed several parts of the merchant platform close together. Navigation moved, pages were rebuilt, and familiar actions found new homes. Each decision made sense on its own. From inside the team, the work formed one coherent direction.'
+				text: 'They were positive about the changes. They still wished they had known earlier.'
 			},
 			{
 				type: 'paragraph',
-				text: 'Support heard a different story. Merchants contacted them because they could no longer find workflows they used every day. We had not always broken the task, but we had broken the route they knew.'
+				text: 'Their screenshots were now out of date. Employees who knew the old routes needed new instructions. Internal support teams had to prepare for questions. What looked like a product release to us had become a training project for them.'
 			},
 			{
 				type: 'heading',
-				text: 'We had months. Merchants had one login.'
+				text: 'The product extended beyond the browser'
 			},
 			{
 				type: 'paragraph',
-				text: 'The team lived through each change over weeks or months. We saw early designs, discussed trade-offs, and watched the new structure take shape. By the time it shipped, it already felt familiar to us.'
+				text: 'Our team had lived with the new navigation for months. We saw each iteration and understood why things had moved. By launch, the result already felt normal.'
 			},
 			{
 				type: 'paragraph',
-				text: 'A merchant could leave the platform on Monday and return on Tuesday to find that several parts of their routine had moved. They had none of the context we had built up along the way.'
+				text: 'Merchants skipped that journey. They saw the accumulated change during their next login.'
 			},
 			{
 				type: 'paragraph',
-				text: 'That made me see familiarity as part of the product. People remember where things are, learn the language, and stop thinking about each click. Research I found later gave me a better way to describe this. Stable interface cues help people become faster and more accurate. When those cues move, that gain can disappear.[^1]'
+				text: 'Their experience included more than the screens we designed. It also lived in memory, internal processes, training sessions, and one employee showing another where to click.'
 			},
 			{
-				type: 'diagram',
-				kind: 'timelines'
+				type: 'paragraph',
+				text: 'Research into interface habits helps explain why this matters. Repeated use makes people faster and more accurate. When familiar cues move, that advantage can disappear.[^1]'
+			},
+			{
+				type: 'paragraph',
+				text: 'Support saw the wider effect. They heard how one interface change travelled through an organisation.'
+			},
+			{
+				type: 'paragraph',
+				text: 'They asked to hear about large releases earlier.'
 			},
 			{
 				type: 'heading',
-				text: 'Support made the cost visible'
+				text: 'Search gave us another chance'
 			},
 			{
 				type: 'paragraph',
-				text: 'Questions such as “Where did this go?” became an alarm. One question could point to a minor problem. A pattern of similar questions told us that we had turned the change dial too far.'
+				text: 'Support knew that we were also preparing a new payment search. This time, we planned the release together.'
 			},
 			{
 				type: 'paragraph',
-				text: 'The phrase *change aversion* can make this reaction sound irrational. The questions from merchants did not feel irrational. They were trying to finish their work, and the knowledge that had made them fast no longer worked.'
+				text: 'The new search started as an opt-in experience. We then enabled it for a small percentage of merchants and increased that percentage in stages.[^3] The early groups exposed problems that we could fix before the release grew.'
 			},
 			{
 				type: 'paragraph',
-				text: 'There was no precise meter for this. A small change on a page used once a year cost little. Moving several parts of a daily workflow cost much more. Support helped us see when those costs had started to add up.'
+				text: 'Support identified merchants who needed advance communication. We kept those accounts until the final stages, giving their teams time to prepare.'
 			},
 			{
-				type: 'diagram',
-				kind: 'questions'
+				type: 'paragraph',
+				text: 'We also kept the old search available for a limited period. If the new version blocked someone’s work, they could return and finish the task. Switching back gave us a useful signal about where the new experience still failed.[^4]'
+			},
+			{
+				type: 'paragraph',
+				text: 'Research into interface transitions found that people can perform worse immediately after moving to a design that will make them faster later. Intermediate versions can reduce that initial drop.[^2] Our rollout gave merchants time to cross that gap.'
+			},
+			{
+				type: 'paragraph',
+				text: 'A gradual release created one more problem: different accounts could now see different versions. We made the active version visible to internal users. Support could see what the merchant saw before giving instructions.'
 			},
 			{
 				type: 'heading',
-				text: 'Pace became part of the design'
+				text: 'Support moved upstream'
 			},
 			{
 				type: 'paragraph',
-				text: 'After that, I paid more attention to how changes reached people, not only to the final design.'
+				text: 'From then on, Support joined our planning sessions and demos. Before every large release, we held a dedicated meeting to agree on the rollout and merchant communication.'
 			},
 			{
 				type: 'paragraph',
-				text: 'Smaller releases gave merchants time to rebuild their habits. They also gave us clearer feedback because we knew which change had caused it. Sometimes the old route needed to remain visible for a while. Sometimes an old term had to stay searchable, or a new workflow had to appear as an option before it became the default.'
+				text: 'The relationship changed beyond releases. Support began bringing merchant problems into our roadmap earlier and more often. We gained a closer connection to the people who heard those problems first.'
 			},
 			{
 				type: 'paragraph',
-				text: 'One study found that people initially performed worse after switching to an interface that later proved more efficient. An intermediate version reduced that drop.[^2] That matched what I had seen: the transition needed design work too.'
-			},
-			{
-				type: 'diagram',
-				kind: 'versions'
+				text: 'Feature flags gave us control over who received a change. Support helped us understand when and how to use that control.'
 			},
 			{
 				type: 'paragraph',
-				text: 'That is still what I mean by a change budget. It is not a formula or an argument against ambitious redesigns. It is a reminder that the team and the user experience change at different speeds.'
+				text: 'At enterprise scale, a release replaces more than an interface. It asks an organisation to replace part of what it knows.'
 			},
 			{
 				type: 'paragraph',
-				text: 'AI now lets me alter a whole product in an afternoon. Users still arrive with yesterday’s map.'
+				text: 'The product may change overnight. The organisation cannot.'
 			},
 			{
 				type: 'footnotes',
 				items: [
 					{
 						id: '1',
-						text: 'Diego Garaialde et al., “[Quantifying the Impact of Making and Breaking Interface Habits](https://arxiv.org/abs/2005.06842),” *International Journal of Human–Computer Studies*, 2020.'
+						text: 'Diego Garaialde et al. found that stable interface cues make people faster and more accurate, and that this gain disappears when those cues are disrupted. [Quantifying the Impact of Making and Breaking Interface Habits](https://www.sciencedirect.com/science/article/abs/pii/S107158192030063X), 2020.'
 					},
 					{
 						id: '2',
-						text: 'Benjamin Rosman et al., “[On User Behaviour Adaptation Under Interface Change](https://www.microsoft.com/en-us/research/publication/user-behaviour-adaptation-interface-change/),” *IUI 2014*.'
+						text: 'Benjamin Rosman et al. found that switching interfaces can cause a sharp drop in performance, even when the new interface becomes more efficient once learned. Intermediate versions reduced that drop. [On User Behaviour Adaptation Under Interface Change](https://www.microsoft.com/en-us/research/publication/user-behaviour-adaptation-interface-change/), 2014.'
+					},
+					{
+						id: '3',
+						text: 'A staged release was also how Google approached a launch at this scale. [Minimizing Change Aversion for the Google Drive Launch](https://research.google/pubs/minimizing-change-aversion-for-the-google-drive-launch/), Google Research, 2013.'
+					},
+					{
+						id: '4',
+						text: 'Spotify combined behavioural and attitudinal data to separate a temporary reaction to change from a real problem with a redesign. [Minimizing Change Aversion Through Mixed Methods Research](https://research.atspotify.com/publications/minimizing-change-aversion-through-mixed-methods-research-a-case-study-of-redesigning-spotifys-your-library), Spotify Research, 2023.'
 					}
 				]
 			}
@@ -909,6 +975,10 @@ export const notes: Note[] = [
 				text: 'They could wait for us or make something themselves. The second option usually won.'
 			},
 			{
+				type: 'diagram',
+				kind: 'deadline'
+			},
+			{
 				type: 'heading',
 				text: 'The next deadline always wins'
 			},
@@ -927,10 +997,6 @@ export const notes: Note[] = [
 			{
 				type: 'paragraph',
 				text: 'If teams keep making their own version, the problem may not be alignment. The shared solution may still be too expensive.'
-			},
-			{
-				type: 'diagram',
-				kind: 'states'
 			},
 			{
 				type: 'heading',
@@ -969,10 +1035,6 @@ export const notes: Note[] = [
 				text: 'Community gave the system relevance. The dedicated team gave it continuity.'
 			},
 			{
-				type: 'diagram',
-				kind: 'stages'
-			},
-			{
 				type: 'heading',
 				text: 'People still want to create'
 			},
@@ -1001,10 +1063,6 @@ export const notes: Note[] = [
 				text: 'Convenience creates usage. Ownership creates commitment.'
 			},
 			{
-				type: 'diagram',
-				kind: 'matrix'
-			},
-			{
 				type: 'heading',
 				text: 'Ownership needs a route'
 			},
@@ -1027,10 +1085,6 @@ export const notes: Note[] = [
 			{
 				type: 'paragraph',
 				text: 'This lets people contribute without turning the library into a collection of exceptions.'
-			},
-			{
-				type: 'diagram',
-				kind: 'loop'
 			},
 			{
 				type: 'heading',
@@ -1061,10 +1115,6 @@ export const notes: Note[] = [
 				text: 'A dedicated team should continue to publish the names and stories behind contributions. Otherwise, shared work can slowly look like the output of one central group.'
 			},
 			{
-				type: 'diagram',
-				kind: 'credit'
-			},
-			{
 				type: 'heading',
 				text: 'Measure pull'
 			},
@@ -1083,10 +1133,6 @@ export const notes: Note[] = [
 			{
 				type: 'paragraph',
 				text: 'The strongest sign of adoption is simple: people choose the system when nobody is checking.'
-			},
-			{
-				type: 'diagram',
-				kind: 'pull'
 			},
 			{
 				type: 'heading',
@@ -1112,9 +1158,14 @@ export const notes: Note[] = [
 	}
 ];
 
+const noteAliases: Record<string, string> = {
+	'change-has-a-budget': 'when-a-familiar-product-changes-overnight'
+};
+
 export function getNote(slug: string | null | undefined): Note | undefined {
 	if (!slug) return undefined;
-	return notes.find((note) => note.slug === slug);
+	const resolved = noteAliases[slug] ?? slug;
+	return notes.find((note) => note.slug === resolved);
 }
 
 export const elsewhere = [

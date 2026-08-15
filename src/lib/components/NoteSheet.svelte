@@ -314,7 +314,7 @@
 		clearPullSamples();
 		paintRing(0);
 		if (phase === 'dismissing') phase = 'open';
-		revealCloseHint();
+		scheduleCloseHint();
 		if (cardEl && expanded) {
 			const open = openRect ?? finalRect();
 			applyChrome(cardEl, open, !reduceMotion, {
@@ -351,8 +351,21 @@
 		clearDismiss();
 	}
 
+	function closeHintIdle() {
+		return (
+			contentVisible &&
+			!closeRequested &&
+			!closeHot &&
+			phase === 'open' &&
+			rawPull <= DEAD_ZONE &&
+			(!scrollerEl || scrollerEl.scrollTop <= 0.5)
+		);
+	}
+
 	function hideCloseHint() {
-		if (hintVisible) hintVisible = false;
+		hintVisible = false;
+		hintReady = false;
+		clearHintTimer();
 	}
 
 	function clearHintTimer() {
@@ -360,29 +373,23 @@
 		hintTimer = undefined;
 	}
 
-	function revealCloseHint() {
-		if (!hintReady || !contentVisible || closeRequested) return;
-		hintVisible = true;
-	}
-
 	function scheduleCloseHint() {
 		clearHintTimer();
-		hintReady = false;
 		hintVisible = false;
+		hintReady = false;
+		if (!closeHintIdle()) return;
 		hintTimer = setTimeout(() => {
 			hintTimer = undefined;
+			if (!closeHintIdle()) return;
 			hintReady = true;
-			if (
-				contentVisible &&
-				!closeRequested &&
-				phase === 'open' &&
-				rawPull <= DEAD_ZONE &&
-				(!scrollerEl || scrollerEl.scrollTop <= 0.5)
-			) {
-				hintVisible = true;
-			}
-		}, 5000);
+			hintVisible = true;
+		}, 2000);
 	}
+
+	$effect(() => {
+		if (closeHot) hideCloseHint();
+		else scheduleCloseHint();
+	});
 
 	function updateScrollThumb() {
 		if (!scrollerEl) {
@@ -879,19 +886,21 @@
 		const urlId = noteIdFromUrl(page.url) ?? noteIdFromUrl(new URL(location.href));
 		const targetId = noteIdFromPage(page);
 
-		if (!stateId && urlId && getNote(urlId) && shouldHydrateNoteFromUrl(urlId)) {
+		const hydrated = urlId ? getNote(urlId) : undefined;
+		if (!stateId && urlId && hydrated && shouldHydrateNoteFromUrl(hydrated.slug)) {
 			const controller = new AbortController();
-			void waitForNoteSource(urlId, { signal: controller.signal }).then(() => {
+			void waitForNoteSource(hydrated.slug, { signal: controller.signal }).then(() => {
 				if (controller.signal.aborted) return;
-				hydrateNoteFromUrl(urlId);
+				hydrateNoteFromUrl(hydrated.slug);
 			});
 			return () => controller.abort();
 		}
 
 		untrack(() => {
-			if (targetId && getNote(targetId)) {
-				if (targetId !== id) {
-					openNote(targetId, undefined, undefined, { syncUrl: false });
+			const note = targetId ? getNote(targetId) : undefined;
+			if (note) {
+				if (note.slug !== id) {
+					openNote(note.slug, undefined, undefined, { syncUrl: false });
 				}
 				return;
 			}
@@ -1035,7 +1044,7 @@
 				!closeRequested &&
 				phase === 'open'
 			) {
-				revealCloseHint();
+				scheduleCloseHint();
 			}
 		};
 		scroller.addEventListener('scroll', onScroll, passive);
@@ -1177,9 +1186,7 @@
 									{/each}
 								</ol>
 							{:else if block.type === 'diagram'}
-								<figure class="figure">
-									<NoteDiagram kind={block.kind} />
-								</figure>
+								<NoteDiagram kind={block.kind} />
 							{:else if block.type === 'figure'}
 								<figure class="figure ratio-{block.ratio ?? 'wide'}">
 									<div class="ph"></div>
@@ -1343,9 +1350,10 @@
 
 	.copy {
 		margin: 0 0 0.95rem;
-		font-size: 1rem;
+		font-size: 15px;
+		font-weight: var(--font-weight, 500);
 		line-height: 1.55;
-		color: var(--color-muted);
+		color: var(--color-body);
 	}
 
 	.copy:last-child {
@@ -1355,9 +1363,10 @@
 	.steps {
 		margin: 0 0 0.95rem;
 		padding: 0 0 0 1.25rem;
-		font-size: 1rem;
+		font-size: 15px;
+		font-weight: var(--font-weight, 500);
 		line-height: 1.55;
-		color: var(--color-muted);
+		color: var(--color-body);
 	}
 
 	.steps li {
@@ -1399,7 +1408,7 @@
 		border-top: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
 		font-size: 0.85rem;
 		line-height: 1.5;
-		color: var(--color-muted);
+		color: var(--color-body);
 	}
 
 	.footnotes li + li {

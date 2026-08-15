@@ -4,8 +4,9 @@ import { getNote } from '$lib/data';
 export function load({ params, url }: { params: { slug: string }; url: URL }) {
 	const next = new URL(url);
 	next.pathname = '/notes';
-	if (getNote(params.slug)) {
-		next.searchParams.set('note', params.slug);
+	const note = getNote(params.slug);
+	if (note) {
+		next.searchParams.set('note', note.slug);
 	}
 	redirect(301, `${next.pathname}${next.search}${next.hash}`);
 }

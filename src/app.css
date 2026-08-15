@@ -2,6 +2,8 @@
 	--color-bg: #141414;
 	--color-text: #EEE8DE;
 	--color-muted: #9c968c;
+	/* Body copy, matching the description text under the thumbnails. */
+	--color-body: color-mix(in srgb, var(--color-text) 45%, var(--color-bg));
 	--color-accent: #EEE8DE;
 	--color-swatch: #141414;
 	--page-max: 72rem;
@@ -59,7 +61,7 @@ body {
 	font-variation-settings: var(--font-variation, normal);
 	font-feature-settings: var(--font-features, normal);
 	font-weight: var(--font-weight, 500);
-	font-size: 1rem;
+	font-size: 15px;
 	line-height: 1.55;
 	transition:
 		background-color 280ms ease,

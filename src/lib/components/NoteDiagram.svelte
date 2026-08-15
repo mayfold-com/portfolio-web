@@ -1,735 +1,537 @@
 <script lang="ts">
-	export type NoteDiagramKind =
-		| 'collision'
-		| 'wait'
-		| 'match'
-		| 'argue'
-		| 'gaps'
-		| 'survive'
-		| 'timelines'
-		| 'questions'
-		| 'versions'
-		| 'states'
-		| 'stages'
-		| 'matrix'
-		| 'loop'
-		| 'credit'
-		| 'pull';
+	import { flip } from 'svelte/animate';
+	import { cubicOut } from 'svelte/easing';
+
+	export type NoteDiagramKind = 'gaps' | 'deadline' | 'benchmark' | 'tasks';
 
 	let { kind }: { kind: NoteDiagramKind } = $props();
+
+	const questions = ['Loading', 'Going back', 'Empty account', 'Payment fails'];
+	const longTasks = [
+		{ at: 0, dur: 70 },
+		{ at: 18, dur: 52 },
+		{ at: 38, dur: 62 }
+	];
+	/** Uneven on purpose, and ending where the parallel work ends. */
+	const smallTasks = [
+		{ at: 0, dur: 25 },
+		{ at: 25, dur: 20 },
+		{ at: 45, dur: 30 },
+		{ at: 75, dur: 25 }
+	];
+
+	type BenchmarkMode = 'time' | 'tokens' | 'intelligence';
+
+	/**
+	 * Artificial Analysis, 15 Aug 2026.
+	 * Time: end-to-end response time for a 500-token reply (includes thinking).
+	 * Tokens: output tokens used to run the full Intelligence Index.
+	 * Intelligence: Artificial Analysis Intelligence Index score.
+	 * Rows re-sort by the selected metric.
+	 * https://artificialanalysis.ai/leaderboards/models
+	 */
+	const models = [
+		{
+			name: 'GPT 5.6 Sol (medium)',
+			time: 11,
+			timeLabel: '11s',
+			tokens: 12,
+			tokenLabel: '12M',
+			intelligence: 56
+		},
+		{
+			name: 'Grok 4.5 (high)',
+			time: 19,
+			timeLabel: '19s',
+			tokens: 60,
+			tokenLabel: '60M',
+			intelligence: 56,
+			highlight: true
+		},
+		{
+			name: 'Gemini 3.6 Flash',
+			time: 22,
+			timeLabel: '22s',
+			tokens: 59,
+			tokenLabel: '59M',
+			intelligence: 52
+		},
+		{
+			name: 'GPT 5.6 Sol (high)',
+			time: 24,
+			timeLabel: '24s',
+			tokens: 21,
+			tokenLabel: '21M',
+			intelligence: 57
+		},
+		{
+			name: 'Claude Opus 5 (xhigh)',
+			time: 42,
+			timeLabel: '42s',
+			tokens: 76,
+			tokenLabel: '76M',
+			intelligence: 63
+		},
+		{
+			name: 'Grok 4.6 (high)',
+			time: 44,
+			timeLabel: '44s',
+			tokens: 72,
+			tokenLabel: '72M',
+			intelligence: 61
+		},
+		{
+			name: 'GPT 5.6 Sol (xhigh)',
+			time: 50,
+			timeLabel: '50s',
+			tokens: 35,
+			tokenLabel: '35M',
+			intelligence: 59
+		},
+		{
+			name: 'Claude Opus 5 (max)',
+			time: 58,
+			timeLabel: '58s',
+			tokens: 100,
+			tokenLabel: '100M',
+			intelligence: 63
+		},
+		{
+			name: 'Kimi K3 (max)',
+			time: 67,
+			timeLabel: '67s',
+			tokens: 130,
+			tokenLabel: '130M',
+			intelligence: 60
+		},
+		{
+			name: 'Claude Sonnet 5 (max)',
+			time: 142,
+			timeLabel: '2m 22s',
+			tokens: 300,
+			tokenLabel: '300M',
+			intelligence: 55
+		},
+		{
+			name: 'GPT 5.6 Sol (max)',
+			time: 150,
+			timeLabel: '2m 30s',
+			tokens: 70,
+			tokenLabel: '70M',
+			intelligence: 61
+		}
+	];
+
+	let mode = $state<BenchmarkMode>('time');
+	const bars = $derived(
+		models
+			.map((model) => {
+				if (mode === 'tokens') {
+					return {
+						name: model.name,
+						value: model.tokens,
+						label: model.tokenLabel,
+						highlight: model.highlight === true
+					};
+				}
+				if (mode === 'intelligence') {
+					return {
+						name: model.name,
+						value: model.intelligence,
+						label: String(model.intelligence),
+						highlight: model.highlight === true
+					};
+				}
+				return {
+					name: model.name,
+					value: model.time,
+					label: model.timeLabel,
+					highlight: model.highlight === true
+				};
+			})
+			.toSorted((a, b) =>
+				mode === 'intelligence' ? b.value - a.value : a.value - b.value
+			)
+	);
+	const longest = $derived(Math.max(...bars.map((bar) => bar.value)));
 </script>
 
-{#if kind === 'collision'}
-	<div
-		class="diagram collision"
-		role="img"
-		aria-label="Three agents changing one product. One updates the model, one still uses the old model, and one redesigns a page that was just removed."
-	>
-		<div class="agents">
-			<div class="win">
-				<span class="chrome"></span>
-				<span class="kicker">Agent 1</span>
-				<strong>Changes the model</strong>
-			</div>
-			<div class="win">
-				<span class="chrome"></span>
-				<span class="kicker">Agent 2</span>
-				<strong>Assumes the old model</strong>
-			</div>
-			<div class="win">
-				<span class="chrome"></span>
-				<span class="kicker">Agent 3</span>
-				<strong>Redesigns a removed page</strong>
+{#if kind === 'gaps'}
+	<figure class="note-diagram">
+		<div class="frame">
+			<div class="between">
+				<span class="screen"></span>
+				<ul class="questions">
+					{#each questions as question (question)}
+						<li>{question}</li>
+					{/each}
+				</ul>
+				<span class="screen"></span>
 			</div>
 		</div>
-		<div class="join" aria-hidden="true"></div>
-		<div class="pill">One product</div>
-	</div>
-{:else if kind === 'wait'}
-	<div
-		class="diagram wait"
-		role="img"
-		aria-label="A fast loop keeps one problem in view. A slow wait leaves a gap that another task fills."
-	>
-		<div class="lane">
-			<span class="kicker">Fast response</span>
-			<div class="flow">
-				<span class="step">Try</span>
-				<span class="arrow" aria-hidden="true"></span>
-				<span class="step">See</span>
-				<span class="arrow" aria-hidden="true"></span>
-				<span class="step">Correct</span>
-			</div>
-			<p>The problem stays in my head.</p>
-		</div>
-		<div class="lane">
-			<span class="kicker">Slow response</span>
-			<div class="flow">
-				<span class="step muted">Waiting</span>
-				<span class="void" aria-hidden="true"></span>
-				<span class="step stray">Another task</span>
-			</div>
-			<p>The empty space fills itself.</p>
-		</div>
-	</div>
-{:else if kind === 'match'}
-	<div
-		class="diagram match"
-		role="img"
-		aria-label="A fast model for work in the loop. A slower model for work that can stand on its own. Keep one active branch."
-	>
-		<div class="pair">
-			<div class="lane">
-				<span class="kicker">In the loop</span>
-				<div class="win">
-					<span class="chrome"></span>
-					<strong>Fast model</strong>
-					<span class="detail">Explore, copy, a small fix</span>
+	</figure>
+{:else if kind === 'deadline'}
+	<figure class="note-diagram">
+		<div class="frame">
+			<div class="chart">
+				<div class="overlay" aria-hidden="true">
+					<div class="marker" style:--at="62"></div>
 				</div>
-			</div>
-			<div class="lane">
-				<span class="kicker">On its own</span>
-				<div class="win">
-					<span class="chrome"></span>
-					<strong>Slower model</strong>
-					<span class="detail">Review, plan, investigation</span>
-				</div>
+
+				<ol class="rows">
+					<li class="row">
+						<span class="bar" style:--at="0" style:--dur="118">Wait for us</span>
+					</li>
+					<li class="row">
+						<span class="bar" style:--at="0" style:--dur="46">Make their own</span>
+					</li>
+				</ol>
+
+				<span class="foot" style:--at="62">The next deadline</span>
 			</div>
 		</div>
-		<div class="branch">
-			<span class="kicker">One active branch</span>
-			<div class="rule" aria-hidden="true"></div>
-		</div>
-	</div>
-{:else if kind === 'argue'}
-	<div
-		class="diagram argue"
-		role="img"
-		aria-label="A tidy static screen next to a rough working flow that talks back with a failed payment."
+	</figure>
+{:else if kind === 'tasks'}
+	<figure
+		class="note-diagram ways"
+		aria-label="Two ways of working over the same time to finish. Parallel work with agents: three overlapping long tasks on separate rows. Sequential work with agents: many small tasks on a single row."
 	>
-		<div class="pair">
-			<div class="lane">
-				<span class="kicker">Static screen</span>
-				<div class="win">
-					<span class="chrome"></span>
-					<strong>Looks finished</strong>
-					<span class="ghost"></span>
-					<span class="ghost"></span>
-					<span class="ghost short"></span>
-				</div>
-			</div>
-			<div class="lane">
-				<span class="kicker">Working version</span>
-				<div class="win">
-					<span class="chrome"></span>
-					<strong>Argues back</strong>
-					<span class="step compact">Continue</span>
-					<span class="step stray compact">Paid, then the API failed</span>
-				</div>
+		<div class="frame">
+			<div class="chart labelled">
+				<span class="way-label">Parallel work with agents</span>
+				<ol class="rows">
+					{#each longTasks as task, index (index)}
+						<li class="row">
+							<span class="lane">Agent {index + 1}</span>
+							<span class="track">
+								<span class="bar plain" style:--at={task.at} style:--dur={task.dur}></span>
+							</span>
+						</li>
+					{/each}
+				</ol>
 			</div>
 		</div>
-	</div>
-{:else if kind === 'gaps'}
-	<div
-		class="diagram gaps"
-		role="img"
-		aria-label="Three screens with the real product sitting in the gaps: loading, going back, empty states, and failure."
+
+		<div class="frame">
+			<div class="chart labelled">
+				<span class="way-label">Sequential work with agents</span>
+				<ol class="rows">
+					<li class="row">
+						<span class="lane">Agent 1</span>
+						<span class="track">
+							{#each smallTasks as task (task.at)}
+								<span class="bar plain" style:--at={task.at} style:--dur={task.dur}></span>
+							{/each}
+						</span>
+					</li>
+				</ol>
+			</div>
+		</div>
+	</figure>
+{:else if kind === 'benchmark'}
+	<figure
+		class="note-diagram"
+		aria-label="Artificial Analysis comparison of the same models by time to finish, output tokens, or Intelligence Index score."
 	>
-		<div class="journey">
-			<div class="win screen">
-				<span class="chrome"></span>
-				<strong>Start</strong>
+		<div class="frame">
+			<div class="switcher" role="tablist" aria-label="Benchmark metric">
+				<button
+					type="button"
+					role="tab"
+					class:active={mode === 'time'}
+					aria-selected={mode === 'time'}
+					onclick={() => (mode = 'time')}
+				>
+					Time to finish
+				</button>
+				<button
+					type="button"
+					role="tab"
+					class:active={mode === 'tokens'}
+					aria-selected={mode === 'tokens'}
+					onclick={() => (mode = 'tokens')}
+				>
+					Output tokens
+				</button>
+				<button
+					type="button"
+					role="tab"
+					class:active={mode === 'intelligence'}
+					aria-selected={mode === 'intelligence'}
+					onclick={() => (mode = 'intelligence')}
+				>
+					Intelligence
+				</button>
 			</div>
-			<div class="gap">
-				<span>Load?</span>
-				<span>Back?</span>
-			</div>
-			<div class="win screen">
-				<span class="chrome"></span>
-				<strong>Choose</strong>
-			</div>
-			<div class="gap">
-				<span>Empty?</span>
-				<span>Fail?</span>
-			</div>
-			<div class="win screen">
-				<span class="chrome"></span>
-				<strong>Pay</strong>
-			</div>
-		</div>
-		<p>The product appears between the screens.</p>
-	</div>
-{:else if kind === 'survive'}
-	<div
-		class="diagram survive"
-		role="img"
-		aria-label="Build, use, fix, and remove come first. Design is what happens to the version that survived."
-	>
-		<div class="flow wrap">
-			<span class="step muted">Build</span>
-			<span class="arrow" aria-hidden="true"></span>
-			<span class="step muted">Use</span>
-			<span class="arrow" aria-hidden="true"></span>
-			<span class="step muted">Fix</span>
-			<span class="arrow" aria-hidden="true"></span>
-			<span class="step muted">Remove</span>
-			<span class="arrow" aria-hidden="true"></span>
-			<span class="step">Design</span>
-		</div>
-		<p>Polish the version that survived contact.</p>
-	</div>
-{:else if kind === 'timelines'}
-	<div
-		class="diagram timelines"
-		role="img"
-		aria-label="The team lives through months of gradual change. A merchant meets all of it in one login."
-	>
-		<div class="lane">
-			<span class="kicker">The team</span>
-			<div class="track">
-				<span class="tick">Week</span>
-				<span class="tick">Week</span>
-				<span class="tick">Week</span>
-				<span class="tick">Week</span>
-				<span class="tick">Ship</span>
-			</div>
-			<p>Months of context.</p>
-		</div>
-		<div class="lane">
-			<span class="kicker">The merchant</span>
-			<div class="track">
-				<span class="void long" aria-hidden="true"></span>
-				<span class="step">One login</span>
-			</div>
-			<p>Tuesday, with yesterday’s map.</p>
-		</div>
-	</div>
-{:else if kind === 'questions'}
-	<div
-		class="diagram questions"
-		role="img"
-		aria-label="Support questions stacking up around the product changes that moved familiar work."
-	>
-		<div class="cluster">
-			<span class="ask">Where did this go?</span>
-			<span class="ask">Where did this go?</span>
-			<span class="ask">Where did this go?</span>
-		</div>
-		<div class="track">
-			<span class="tick">Nav moved</span>
-			<span class="tick">Pages rebuilt</span>
-			<span class="tick">Actions moved</span>
-		</div>
-		<p>One question is noise. A pattern is the budget running out.</p>
-	</div>
-{:else if kind === 'versions'}
-	<div
-		class="diagram versions"
-		role="img"
-		aria-label="Three versions of one workflow: the familiar one, an intermediate that keeps the old route, and the final one."
-	>
-		<div class="trio">
-			<div class="win">
-				<span class="chrome"></span>
-				<span class="kicker">Familiar</span>
-				<strong>The old route</strong>
-				<span class="ghost"></span>
-				<span class="ghost short"></span>
-			</div>
-			<div class="win">
-				<span class="chrome"></span>
-				<span class="kicker">Intermediate</span>
-				<strong>Both still visible</strong>
-				<span class="ghost"></span>
-				<span class="ghost short"></span>
-			</div>
-			<div class="win">
-				<span class="chrome"></span>
-				<span class="kicker">Final</span>
-				<strong>The new default</strong>
-				<span class="ghost"></span>
-				<span class="ghost short"></span>
+
+			<div class="chart labelled latency">
+				<ol class="rows">
+					{#each bars as bar (bar.name)}
+						<li
+							class="row"
+							class:highlight={bar.highlight}
+							animate:flip={{ duration: 420, easing: cubicOut }}
+						>
+							<span class="lane">{bar.name}</span>
+							<span class="track">
+								<span
+									class="bar"
+									style:--at="0"
+									style:width={`calc(${(bar.value / longest) * 100}% - 5px)`}
+								></span>
+							</span>
+							<span class="duration">{bar.label}</span>
+						</li>
+					{/each}
+				</ol>
 			</div>
 		</div>
-	</div>
-{:else if kind === 'states'}
-	<div
-		class="diagram states"
-		role="img"
-		aria-label="An early style guide with one state beside a later component that covers the states teams actually need."
-	>
-		<div class="pair">
-			<div class="lane">
-				<span class="kicker">Style guide</span>
-				<div class="win">
-					<span class="chrome"></span>
-					<strong>Default</strong>
-					<span class="detail">Hover, error, empty: missing</span>
-				</div>
-			</div>
-			<div class="lane">
-				<span class="kicker">In the product</span>
-				<div class="chip-row">
-					<span class="step compact">Default</span>
-					<span class="step compact">Hover</span>
-					<span class="step compact">Error</span>
-					<span class="step compact">Empty</span>
-					<span class="step compact">Disabled</span>
-				</div>
-			</div>
-		</div>
-	</div>
-{:else if kind === 'stages'}
-	<div
-		class="diagram stages"
-		role="img"
-		aria-label="Three stages of the system: an early style guide, volunteer time after product work, and a dedicated team."
-	>
-		<div class="trio">
-			<div class="win">
-				<span class="chrome"></span>
-				<span class="kicker">Early</span>
-				<strong>Style guide</strong>
-				<span class="detail">A file, many gaps</span>
-			</div>
-			<div class="win">
-				<span class="chrome"></span>
-				<span class="kicker">Volunteer</span>
-				<strong>After product work</strong>
-				<span class="detail">Stops when the deadline moves</span>
-			</div>
-			<div class="win">
-				<span class="chrome"></span>
-				<span class="kicker">Dedicated</span>
-				<strong>Protected time</strong>
-				<span class="detail">Contributions have somewhere to go</span>
-			</div>
-		</div>
-	</div>
-{:else if kind === 'matrix'}
-	<div
-		class="diagram matrix"
-		role="img"
-		aria-label="Four outcomes of a shared system: ignored, worked around, debated, or shared, depending on ease of use and influence."
-	>
-		<div class="grid">
-			<span class="axis"></span>
-			<span class="axis">Closed</span>
-			<span class="axis">Open</span>
-			<span class="axis">Hard to use</span>
-			<span class="cell">Ignored</span>
-			<span class="cell">Debated</span>
-			<span class="axis">Easy to use</span>
-			<span class="cell">Worked around</span>
-			<span class="cell hot">Shared</span>
-		</div>
-	</div>
-{:else if kind === 'loop'}
-	<div
-		class="diagram loop"
-		role="img"
-		aria-label="A contribution starts as a product problem, is tested locally, reviewed, then shared back into new product work."
-	>
-		<div class="flow wrap">
-			<span class="step">Problem</span>
-			<span class="arrow" aria-hidden="true"></span>
-			<span class="step">Local test</span>
-			<span class="arrow" aria-hidden="true"></span>
-			<span class="step">Review</span>
-			<span class="arrow" aria-hidden="true"></span>
-			<span class="step">Shared</span>
-			<span class="arrow" aria-hidden="true"></span>
-			<span class="step">Product work</span>
-		</div>
-		<p>Context from the product. Quality from the system team.</p>
-	</div>
-{:else if kind === 'credit'}
-	<div
-		class="diagram credit"
-		role="img"
-		aria-label="A release note that names the people, the problem they solved, and where the pattern can be reused."
-	>
-		<div class="win note">
-			<span class="chrome"></span>
-			<span class="kicker">Changelog</span>
-			<strong>Account switcher states</strong>
-			<div class="meta">
-				<span>By the designer and engineer who hit the gap</span>
-				<span>Now reusable in Payments and Reports</span>
-			</div>
-		</div>
-	</div>
-{:else}
-	<div
-		class="diagram pull"
-		role="img"
-		aria-label="Required usage produces compliance. Pull is when teams choose the system when nobody is checking."
-	>
-		<div class="pair">
-			<div class="lane">
-				<span class="kicker">Required</span>
-				<div class="win">
-					<span class="chrome"></span>
-					<strong>Usage</strong>
-					<span class="detail">Someone is checking</span>
-				</div>
-			</div>
-			<div class="lane">
-				<span class="kicker">Chosen</span>
-				<div class="win">
-					<span class="chrome"></span>
-					<strong>Pull</strong>
-					<span class="detail">Nobody is checking</span>
-				</div>
-			</div>
-		</div>
-	</div>
+	</figure>
 {/if}
 
 <style>
-	.diagram {
-		box-sizing: border-box;
+	.note-diagram {
 		width: 100%;
-		padding: 1.15rem 1.1rem 1.2rem;
-		border-radius: 0.75rem;
-		background: color-mix(in srgb, var(--color-text) 6%, var(--color-bg));
-		color: var(--color-text);
-		font: inherit;
+		margin: 2.25rem 0;
+		padding: 0;
 	}
 
-	.kicker {
-		display: block;
-		font-size: 0.72rem;
-		letter-spacing: 0.02em;
-		color: var(--color-muted);
-	}
-
-	.win {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		border: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
-		border-radius: 8px;
-		background: color-mix(in srgb, var(--color-text) 4%, var(--color-bg));
+	.frame {
+		width: 100%;
+		padding: 1.5rem 1.25rem;
+		border-radius: 1rem;
+		background: color-mix(in srgb, var(--color-text) 5%, transparent);
+		box-sizing: border-box;
+		/* Bars that outlast the frame are meant to run off the edge. */
 		overflow: hidden;
 	}
 
-	.chrome {
-		display: block;
-		height: 9px;
-		background: color-mix(in srgb, var(--color-text) 10%, transparent);
-		border-bottom: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+	.chart {
+		position: relative;
+		--label-w: 0rem;
+		--row-h: 2.75rem;
 	}
 
-	.win .kicker,
-	.win strong,
-	.win .detail,
-	.win .step,
-	.win .meta {
-		padding-left: 0.7rem;
-		padding-right: 0.7rem;
+	.chart.labelled {
+		--label-w: 6rem;
 	}
 
-	.win .kicker {
-		padding-top: 0.55rem;
-	}
-
-	.win strong {
-		padding-top: 0.2rem;
-		padding-bottom: 0.7rem;
-		font-size: 0.88rem;
-		font-weight: var(--font-weight);
-		line-height: 1.3;
-	}
-
-	.win .detail {
-		padding-bottom: 0.75rem;
-		font-size: 0.78rem;
-		line-height: 1.35;
-		color: var(--color-muted);
-	}
-
-	.win .step {
-		margin: 0 0.7rem 0.45rem;
-		padding-left: 0.55rem;
-		padding-right: 0.55rem;
-		width: fit-content;
-	}
-
-	.win .step:last-child {
-		margin-bottom: 0.75rem;
-	}
-
-	.ghost {
-		display: block;
-		height: 7px;
-		margin: 0 0.7rem 0.4rem;
+	.switcher {
+		display: inline-flex;
+		gap: 0.2rem;
+		margin-bottom: 1.15rem;
+		padding: 0.2rem;
 		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-text) 8%, transparent);
+	}
+
+	.switcher button {
+		appearance: none;
+		border: 0;
+		margin: 0;
+		padding: 0.45rem 0.85rem;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--color-muted);
+		font: inherit;
+		font-size: 0.85rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	.switcher button.active {
 		background: color-mix(in srgb, var(--color-text) 12%, transparent);
+		color: var(--color-text);
 	}
 
-	.ghost.short {
-		width: 42%;
+	.chart.latency {
+		--label-w: 10.5rem;
+		--time-w: 3.5rem;
+		--row-h: 2.15rem;
 	}
 
-	.ghost:last-child {
-		margin-bottom: 0.8rem;
+	.chart.latency .row {
+		grid-template-columns: var(--label-w) minmax(0, 1fr) var(--time-w);
 	}
 
-	.pill {
-		padding: 0.4rem 0.75rem;
-		border: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
-		border-radius: 999px;
-		font-size: 0.78rem;
-		color: var(--color-muted);
+	.chart.latency .bar {
+		width: 0;
+		transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
-	p {
-		margin: 0.55rem 0 0;
-		font-size: 0.78rem;
-		line-height: 1.4;
-		color: var(--color-muted);
+	.chart.latency .row.highlight .lane,
+	.chart.latency .row.highlight .duration {
+		color: var(--color-text);
 	}
 
-	.lane .kicker,
-	.branch .kicker {
-		margin-bottom: 0.45rem;
-	}
-
-	.flow,
-	.track,
-	.chip-row,
-	.journey {
-		display: flex;
-		align-items: center;
-		gap: 0.45rem;
-		min-width: 0;
-	}
-
-	.flow.wrap,
-	.chip-row,
-	.track {
-		flex-wrap: wrap;
-	}
-
-	.step {
-		flex: 0 0 auto;
-		padding: 0.4rem 0.65rem;
-		border: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
-		border-radius: 8px;
-		font-size: 0.82rem;
-		line-height: 1.2;
-	}
-
-	.step.compact {
-		padding: 0.32rem 0.55rem;
-		font-size: 0.78rem;
-	}
-
-	.step.muted,
-	.tick {
-		color: var(--color-muted);
-	}
-
-	.step.stray {
-		border-style: dashed;
-	}
-
-	.arrow {
-		flex: 0 0 1.1rem;
-		height: 1px;
+	.chart.latency .row.highlight .bar {
 		background: color-mix(in srgb, var(--color-text) 28%, transparent);
 	}
 
-	.void {
-		flex: 1 1 2.5rem;
-		height: 1px;
-		background-image: linear-gradient(
-			to right,
-			color-mix(in srgb, var(--color-text) 28%, transparent) 40%,
-			transparent 0
-		);
-		background-size: 7px 1px;
-		background-repeat: repeat-x;
-	}
-
-	.void.long {
-		flex-basis: 4.5rem;
-	}
-
-	.pair,
-	.trio,
-	.agents {
+	.note-diagram.ways {
 		display: grid;
 		gap: 0.75rem;
-		width: 100%;
 	}
 
-	.pair {
-		grid-template-columns: 1fr 1fr;
+	.note-diagram.ways .chart {
+		--label-w: 4.75rem;
+		--row-h: 2.15rem;
 	}
 
-	.trio,
-	.agents {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+	.way-label {
+		display: block;
+		margin: 0 0 0.75rem;
+		font-size: 0.85rem;
+		color: var(--color-text);
 	}
 
-	.collision {
+	.duration {
+		font-size: 0.85rem;
+		color: var(--color-muted);
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	/* Room for the label that hangs under the chart. */
+	.chart:not(.labelled) {
+		padding-bottom: 1.85rem;
+	}
+
+	.rows {
 		display: grid;
-		justify-items: center;
-		gap: 0;
+		gap: 0.55rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
 	}
 
-	.collision .agents {
-		gap: 0.65rem;
+	.row {
+		position: relative;
+		display: grid;
+		grid-template-columns: var(--label-w) minmax(0, 1fr);
+		align-items: center;
+		height: var(--row-h);
 	}
 
-	.join {
+	.track {
+		position: relative;
+		height: 100%;
+	}
+
+	/* Bars sit in the track when there is a label column, and in the row when there is not. */
+	.bar {
+		position: absolute;
+		inset-block: 0;
+		left: calc(var(--at) * 1%);
+		width: calc(var(--dur) * 1% - 5px);
+		display: flex;
+		align-items: center;
+		padding: 0 1rem;
+		box-sizing: border-box;
+		border-radius: 0.75rem;
+		background: color-mix(in srgb, var(--color-text) 9%, transparent);
+		font-size: 0.95rem;
+		color: var(--color-text);
+		white-space: nowrap;
+		overflow: hidden;
+	}
+
+	.row > .bar {
+		left: calc(var(--label-w) + var(--at) * 1%);
+	}
+
+	.bar.plain {
+		padding: 0;
+	}
+
+	.lane {
+		font-size: 0.85rem;
+		color: var(--color-muted);
+		white-space: nowrap;
+	}
+
+	/* Overlay spans the track area only, so percentages line up with the bars. */
+	.overlay {
+		position: absolute;
+		top: 0;
+		bottom: 1.85rem;
+		left: var(--label-w);
+		right: 0;
+		pointer-events: none;
+	}
+
+	.marker {
+		position: absolute;
+		inset-block: -0.35rem;
+		left: calc(var(--at) * 1%);
 		width: 1px;
-		height: 1.1rem;
-		background: color-mix(in srgb, var(--color-text) 22%, transparent);
+		background: color-mix(in srgb, var(--color-text) 32%, transparent);
 	}
 
-	.wait,
-	.match,
-	.argue,
-	.gaps,
-	.survive,
-	.timelines,
-	.questions,
-	.versions,
-	.states,
-	.stages,
-	.matrix,
-	.loop,
-	.credit,
-	.pull {
-		display: grid;
-		gap: 1.1rem;
-	}
-
-	.gaps,
-	.survive,
-	.questions,
-	.loop,
-	.credit {
-		gap: 0.7rem;
-	}
-
-	.match .win strong,
-	.argue .win strong,
-	.versions .win strong,
-	.states .win strong,
-	.stages .win strong,
-	.credit .win strong,
-	.pull .win strong {
-		padding-bottom: 0.25rem;
-	}
-
-	.branch .rule {
-		height: 2px;
-		border-radius: 999px;
-		background: color-mix(in srgb, var(--color-text) 22%, transparent);
-	}
-
-	.screen strong {
-		padding-bottom: 0.75rem;
-	}
-
-	.gap {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.15rem;
-		min-width: 2.6rem;
-		font-size: 0.7rem;
-		line-height: 1.25;
+	.foot {
+		position: absolute;
+		bottom: 0;
+		left: calc(var(--label-w) + var(--at) * 1%);
+		transform: translateX(-50%);
+		font-size: 0.85rem;
 		color: var(--color-muted);
+		white-space: nowrap;
 	}
 
-	.tick {
-		flex: 1 1 auto;
-		padding: 0.4rem 0.55rem;
-		border: 1px solid color-mix(in srgb, var(--color-text) 14%, transparent);
-		border-radius: 8px;
-		font-size: 0.78rem;
-		line-height: 1.2;
+	.between {
+		display: grid;
+		grid-template-columns: minmax(0, 7rem) minmax(0, 1fr) minmax(0, 7rem);
+		align-items: center;
+		column-gap: 1.5rem;
+	}
+
+	.screen {
+		height: 9rem;
+		border-radius: 0.75rem;
+		background: color-mix(in srgb, var(--color-text) 9%, transparent);
+	}
+
+	.questions {
+		display: grid;
+		gap: 0.5rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		font-size: 0.85rem;
+		line-height: 1.3;
+		color: var(--color-muted);
 		text-align: center;
 	}
 
-	.cluster {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.4rem;
-	}
-
-	.ask {
-		padding: 0.32rem 0.6rem;
-		border: 1px dashed color-mix(in srgb, var(--color-text) 22%, transparent);
-		border-radius: 999px;
-		font-size: 0.75rem;
-		color: var(--color-muted);
-	}
-
-	.grid {
-		display: grid;
-		grid-template-columns: auto 1fr 1fr;
-		gap: 0.45rem;
-		align-items: stretch;
-	}
-
-	.axis {
-		display: flex;
-		align-items: center;
-		padding: 0.15rem 0.2rem;
-		font-size: 0.72rem;
-		color: var(--color-muted);
-	}
-
-	.cell {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		min-height: 3.1rem;
-		padding: 0.55rem 0.6rem;
-		border: 1px solid color-mix(in srgb, var(--color-text) 16%, transparent);
-		border-radius: 8px;
-		font-size: 0.82rem;
-		text-align: center;
-	}
-
-	.cell.hot {
-		border-color: color-mix(in srgb, var(--color-text) 32%, transparent);
-		background: color-mix(in srgb, var(--color-text) 6%, transparent);
-	}
-
-	.meta {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		padding-bottom: 0.8rem;
-		font-size: 0.78rem;
-		line-height: 1.4;
-		color: var(--color-muted);
-	}
 
 	@media (max-width: 800px) {
-		.agents,
-		.pair,
-		.trio {
-			grid-template-columns: 1fr;
+		.frame {
+			padding: 1.25rem 1rem;
 		}
 
-		.journey {
-			flex-wrap: wrap;
+		.chart.labelled {
+			--label-w: 4.75rem;
 		}
 
-		.grid {
-			grid-template-columns: 1fr;
+		.chart.latency {
+			--label-w: 7.75rem;
+			--time-w: 3.25rem;
+			--row-h: 2rem;
 		}
 
-		.axis:empty {
-			display: none;
+		.bar {
+			padding: 0 0.75rem;
+			font-size: 0.9rem;
+		}
+
+		.between {
+			grid-template-columns: minmax(0, 4.5rem) minmax(0, 1fr) minmax(0, 4.5rem);
+			column-gap: 1rem;
+		}
+
+		.screen {
+			height: 7.5rem;
 		}
 	}
 </style>

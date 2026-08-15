@@ -388,7 +388,7 @@
 		max-width: 28rem;
 		font-size: 1.05rem;
 		line-height: 1.55;
-		color: var(--color-muted);
+		color: var(--color-body);
 	}
 
 	.contact .actions {

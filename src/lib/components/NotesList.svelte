@@ -116,7 +116,7 @@
 		line-height: 1.35;
 		font-variant-numeric: tabular-nums;
 		color: var(--color-text);
-		opacity: 0.4;
+		opacity: 0.45;
 		pointer-events: none;
 		transition:
 			transform 340ms cubic-bezier(0.22, 1, 0.36, 1),

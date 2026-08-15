@@ -1276,7 +1276,7 @@
 		paintRing(0);
 		if (phase === 'dismissing') phase = 'open';
 		// Bring the close hint back when pull-to-dismiss is cancelled.
-		revealCloseHint();
+		scheduleCloseHint();
 		if (cardEl && expanded) {
 			const open = openRect ?? finalRect();
 			applyChrome(cardEl, open, !reduceMotion, {
@@ -1319,8 +1319,21 @@
 		clearDismiss();
 	}
 
+	function closeHintIdle() {
+		return (
+			contentVisible &&
+			!closeRequested &&
+			!closeHot &&
+			phase === 'open' &&
+			rawPull <= DEAD_ZONE &&
+			(!scrollerEl || scrollerEl.scrollTop <= 0.5)
+		);
+	}
+
 	function hideCloseHint() {
-		if (hintVisible) hintVisible = false;
+		hintVisible = false;
+		hintReady = false;
+		clearHintTimer();
 	}
 
 	function clearHintTimer() {
@@ -1328,29 +1341,23 @@
 		hintTimer = undefined;
 	}
 
-	function revealCloseHint() {
-		if (!hintReady || !contentVisible || closeRequested) return;
-		hintVisible = true;
-	}
-
 	function scheduleCloseHint() {
 		clearHintTimer();
-		hintReady = false;
 		hintVisible = false;
+		hintReady = false;
+		if (!closeHintIdle()) return;
 		hintTimer = setTimeout(() => {
 			hintTimer = undefined;
+			if (!closeHintIdle()) return;
 			hintReady = true;
-			if (
-				contentVisible &&
-				!closeRequested &&
-				phase === 'open' &&
-				rawPull <= DEAD_ZONE &&
-				(!scrollerEl || scrollerEl.scrollTop <= 0.5)
-			) {
-				hintVisible = true;
-			}
-		}, 5000);
+			hintVisible = true;
+		}, 2000);
 	}
+
+	$effect(() => {
+		if (closeHot) hideCloseHint();
+		else scheduleCloseHint();
+	});
 
 	const SCROLL_TRACK_PAD = 28;
 	const SCROLL_THUMB_MIN = 36;
@@ -2429,7 +2436,7 @@
 				!closeRequested &&
 				phase === 'open'
 			) {
-				revealCloseHint();
+				scheduleCloseHint();
 			}
 		};
 
@@ -3678,8 +3685,7 @@
 		font-size: 15px;
 		font-weight: var(--font-weight, 500);
 		line-height: 1.55;
-		color: var(--color-text);
-		opacity: 0.45;
+		color: var(--color-body);
 		max-width: 34rem;
 	}
 
@@ -3703,8 +3709,7 @@
 		font-size: 15px;
 		font-weight: var(--font-weight, 500);
 		line-height: 1.55;
-		color: var(--color-text);
-		opacity: 0.45;
+		color: var(--color-body);
 	}
 
 	.case-copy:last-of-type {
