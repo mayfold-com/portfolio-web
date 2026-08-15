@@ -3696,6 +3696,10 @@
 			margin-inline: var(--page-pad);
 		}
 
+		.caption {
+			padding-bottom: 3.75rem;
+		}
+
 		.case-figures.count-2,
 		.case-figures.count-3 {
 			grid-template-columns: minmax(0, 1fr);
@@ -4146,6 +4150,27 @@
 		stroke-linecap: round;
 		stroke-dasharray: var(--ring-len);
 		stroke-dashoffset: calc(var(--ring-len) * (1 - var(--ring-progress, 0)));
+	}
+
+	@media (max-width: 800px) {
+		.close-hint {
+			top: auto;
+			bottom: 1.75rem;
+			transform: translateY(50%) translateX(-10px) scale(0.64);
+		}
+
+		.close-hint.visible {
+			transform: translateY(50%) translateX(0) scale(1);
+		}
+
+		.dismiss-ring {
+			top: auto;
+			bottom: calc(1.75rem - 18px);
+		}
+
+		.details-inner {
+			padding-bottom: clamp(4.5rem, 12vw, 6.5rem);
+		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {

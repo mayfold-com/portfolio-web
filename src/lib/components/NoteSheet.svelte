@@ -1544,6 +1544,22 @@
 		.details-inner {
 			width: auto;
 			margin-inline: var(--page-pad);
+			padding-bottom: clamp(4.5rem, 12vw, 6.5rem);
+		}
+
+		.close-hint {
+			top: auto;
+			bottom: 1.75rem;
+			transform: translateY(50%) translateX(-10px) scale(0.64);
+		}
+
+		.close-hint.visible {
+			transform: translateY(50%) translateX(0) scale(1);
+		}
+
+		.dismiss-ring {
+			top: auto;
+			bottom: calc(1.75rem - 18px);
 		}
 	}
 </style>
