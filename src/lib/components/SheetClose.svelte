@@ -139,6 +139,13 @@
 		outline-offset: 2px;
 	}
 
+	@media (max-width: 800px) {
+		.sheet-close {
+			top: auto;
+			bottom: calc(1.75rem - 24px);
+		}
+	}
+
 	@media (prefers-reduced-motion: reduce) {
 		.sheet-close {
 			transition: none;
